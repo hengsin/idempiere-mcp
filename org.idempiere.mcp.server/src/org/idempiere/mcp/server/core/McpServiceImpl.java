@@ -104,7 +104,11 @@ public class McpServiceImpl implements IMcpService {
         JsonArray tools = new JsonArray();
         
         tools.add(createTool("search_records", 
-            "Search iDempiere records. Hint: Check 'idempiere://metadata/models' first to find Table Names.",
+            "Search iDempiere records. Hint: Check 'idempiere://metadata/models' first to find Table Names."
+            + "Alternatively, use the list_models tools get the list of models (tables)."
+            + "get_window_records and get_child_tab_records tool can also be used to search records within a window context."
+            + "Since window is a UI definition for user to work with a group of related tables/models, get_window_tabs tool "
+            + "can be used to discover the relations between tables/models.",
             new String[]{"model"}, 
             new String[]{"model","string","Table Name (e.g. C_Order)"},
             new String[]{"filter","string","OData Filter (e.g. GrandTotal gt 100)."},
@@ -113,7 +117,10 @@ public class McpServiceImpl implements IMcpService {
         ));
         
         tools.add(createTool("get_record", 
-            "Get a record by ID (Integer or UUID).", 
+            "Get a record by ID (Integer or UUID). get_window_record and get_window_tab_record tools "
+            + "can also be used to get record within a window context."
+            + " Since window is a UI definition for user to work with a group of related tables/models, get_window_tabs tool "
+            + "can be used to discover the relations between tables/models.", 
             new String[]{"model","id"}, 
             new String[]{"model","string","Table Name"},
             new String[]{"id","string","Record ID"}
@@ -121,7 +128,10 @@ public class McpServiceImpl implements IMcpService {
         
         tools.add(createTool("create_record", "Create a record. Use the 'get_model_yaml' tool for columns."
         		+ " User can use the special 'doc-action' field in the data object to perform document actions - CO for Complete,"
-        		+ " VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close.", 
+        		+ " VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close."
+        		+ " create_window_record and create_child_tab_record tool can also be used to create record within a window context."
+        		+ " Since window is a UI definition for user to work with a group of related tables/models, get_window_tabs tool "
+                + "can be used to discover the relations between tables/models.", 
             new String[]{"model","data"}, 
             new String[]{"model","string","Table Name"}, 
             new String[]{"data","object","JSON Object of fields"}
@@ -129,14 +139,18 @@ public class McpServiceImpl implements IMcpService {
         
         tools.add(createTool("update_record", "Update a record. Use the 'get_model_yaml' tool for columns."
         		+ " User can use the special 'doc-action' field in the data object to perform document actions - CO for Complete,"
-        		+ " VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close.", 
+        		+ " VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close."
+        		+ " update_window_tab_record tool can also be used to update record within a window context."
+        		+ " Since window is a UI definition for user to work with a group of related tables/models, get_window_tabs tool "
+                + "can be used to discover the relations between tables/models.", 
             new String[]{"model","id","data"}, 
             new String[]{"model","string","Table Name"}, 
             new String[]{"id","string","Record ID"}, 
             new String[]{"data","object","Fields to update"}
         ));
 
-        tools.add(createTool("delete_record", "Delete record by id", new String[]{"tableName", "record_id"},
+        tools.add(createTool("delete_record", "Delete record by id. delete_window_tab_record tool can also "
+        		+ "be used to delete record within a window context.", new String[]{"tableName", "record_id"},
         	new String[]{"tableName","string","table name"},
         	new String[]{"record_id","string","record id"}
         ));
@@ -186,14 +200,17 @@ public class McpServiceImpl implements IMcpService {
             new String[]{"tableName","string","Table Name (e.g. C_Order)"}
         ));
         
-        tools.add(createTool("get_process_info", "Get details of a process by slug", new String[]{"process_slug"},
-        	new String[]{"process_slug","string","slug of process value/search key"}
+        tools.add(createTool("get_process_info", "Get details of a process by slug (lower case and replace space with -).", new String[]{"process_slug"},
+        	new String[]{"process_slug","string","slug of process value/search key (ad_process.value)"}
         ));
         
         tools.add(createTool("run_process", 
-            "Run a process/report. Check 'idempiere://metadata/processes' for value property.", 
-            new String[]{"process_id"},
-            new String[]{"process_id","string","slugify value property of the process"},
+            "Run a process/report. Check 'idempiere://metadata/processes' for value property."
+            + "Alternatively, use the search_records tool with ad_process as model to get the list of processes."
+            + "Another option is to use the process window in the iDempiere UI to find the process and its parameters"
+            + "(get_window_records, get_window_record).", 
+            new String[]{"process_slug"},
+            new String[]{"process_slug","string","slugify value (lower case and replace space with -) property of the process (ad_process.value)"},
             new String[]{"parameters","object","Process parameters"}
         ));
         
@@ -228,18 +245,20 @@ public class McpServiceImpl implements IMcpService {
         	new String[]{"scheduler_id","string","scheduler id"}
         ));
         
-        tools.add(createTool("list_windows", "Get list of windows", new String[]{},
+        tools.add(createTool("list_windows", "Get list of windows. Window is a UI definition for user "
+        		+ "to work with a group of related tables/models.", new String[]{},
         	new String[]{"filter","string","OData $filter expression (optional)"}
         ));
-        tools.add(createTool("get_window_tabs", "Get list of tabs of a window", new String[]{"window_slug"},
-        	new String[]{"window_slug","string","slug of window name"}
+        tools.add(createTool("get_window_tabs", "Get list of tabs of a window. Each tab is map to a table/model.", new String[]{"window_slug"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."}
         ));
-        tools.add(createTool("get_window_tab_fields", "Get list of fields of a window tab", new String[]{"window_slug", "tab_slug"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"}
+        tools.add(createTool("get_window_tab_fields", "Get list of fields of a window tab. Each field is a UI element for user to "
+        		+ "interact with a specific table column (model property).", new String[]{"window_slug", "tab_slug"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)."}
         ));
-        tools.add(createTool("get_window_records", "Get records of a window", new String[]{"window_slug"},
-        	new String[]{"window_slug","string","slug of window name"},
+        tools.add(createTool("get_window_records", "Search records of a window.", new String[]{"window_slug"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."},
         	new String[]{"filter","string","SQL filter clause (optional)"},
         	new String[]{"sort_column","string","Column to sort by, use ! prefix for descending sort (optional)"},
         	new String[]{"page_no","integer","Current page no (optional)"}
@@ -247,47 +266,47 @@ public class McpServiceImpl implements IMcpService {
         tools.add(createTool("create_window_record", "Create window record. Use the 'get_window_tabs' tools for tabs and 'get_window_tab_fields' tool for fields. "
         		+ "User can use the special 'doc-action' field in the data object to perform document actions - CO for Complete, "
         		+ "VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close.", new String[]{"window_slug", "data"},
-        	new String[]{"window_slug","string","slug of window name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."},
         	new String[]{"data","object","JSON Object of fields"}
         ));
         tools.add(createTool("get_window_record", "Get record by id", new String[]{"window_slug", "record_id"},
-        	new String[]{"window_slug","string","slug of window name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."},
         	new String[]{"record_id","string","record id"},
         	new String[]{"expand","string","comma separated list of child tabs to load (optional)"}
         ));
         tools.add(createTool("print_window_record", "Print document of a record", new String[]{"window_slug", "record_id"},
-        	new String[]{"window_slug","string","slug of window name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)."},
         	new String[]{"record_id","string","record id"}
         ));
         tools.add(createTool("get_window_tab_record", "Get tab record by id", new String[]{"window_slug", "tab_slug", "record_id"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)"},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)"},
         	new String[]{"record_id","string","record id"}
         ));
         tools.add(createTool("update_window_tab_record", "Update tab record by id. Use the 'get_window_tabs' tools for tabs and 'get_window_tab_fields' tool for fields. "
         		+ "User can use the special 'doc-action' field in the data object to perform document actions - CO for Complete, "
         		+ "VO for Void, RE for Re-Activate, RC for Reverse Correct, RA for Reverse Accrual, PR for Prepare and CL for Close.", new String[]{"window_slug", "tab_slug", "record_id", "data"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)"},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)"},
         	new String[]{"record_id","string","record id"},
         	new String[]{"data","object","JSON Object of fields"}
         ));
         tools.add(createTool("delete_window_tab_record", "Delete tab record by id", new String[]{"window_slug", "tab_slug", "record_id"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)"},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)"},
         	new String[]{"record_id","string","record id"}
         ));
         tools.add(createTool("get_child_tab_records", "Get child tab records", new String[]{"window_slug", "tab_slug", "record_id", "child_tab_slug"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)"},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)"},
         	new String[]{"record_id","string","record id"},
         	new String[]{"child_tab_slug","string","slug of child tab name"}
         ));
         tools.add(createTool("create_child_tab_record", "Create child tab record", new String[]{"window_slug", "tab_slug", "record_id", "child_tab_slug", "data"},
-        	new String[]{"window_slug","string","slug of window name"},
-        	new String[]{"tab_slug","string","slug of window tab name"},
+        	new String[]{"window_slug","string","slug of window name (lower case and replace space with -)"},
+        	new String[]{"tab_slug","string","slug of window tab name (lower case and replace space with -)"},
         	new String[]{"record_id","string","record id"},
-        	new String[]{"child_tab_slug","string","slug of child tab name"},
+        	new String[]{"child_tab_slug","string","slug of child tab name (lower case and replace space with -)"},
         	new String[]{"data","object","JSON Object of fields"}
         ));
         JsonObject res = new JsonObject(); res.add("tools", tools);

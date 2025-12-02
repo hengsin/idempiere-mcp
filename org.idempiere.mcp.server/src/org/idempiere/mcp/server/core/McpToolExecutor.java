@@ -245,11 +245,10 @@ public class McpToolExecutor {
 
     public static String runProcess(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String processId = args.get("process_id").getAsString();
+            String processId = args.get("process_slug").getAsString();
             JsonObject params = args.has("parameters") ? args.get("parameters").getAsJsonObject() : new JsonObject();
             
-            JsonObject payload = new JsonObject();
-            payload.add("parameters", params);
+            JsonObject payload = params.size() > 0 ? params : new JsonObject();
 
             JsonElement response = client.post("/processes/" + processId, payload, token);
             return wrapJsonContent(id, response);
