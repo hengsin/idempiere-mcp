@@ -33,6 +33,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
+import java.text.Normalizer.Form;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 public class McpToolExecutor {
 
@@ -234,7 +238,7 @@ public class McpToolExecutor {
 
     public static String getProcessInfoTool(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String processSlug = args.get("process_slug").getAsString();
+            String processSlug = slugify(args.get("process_value").getAsString());
             String path = "/processes/" + URLEncoder.encode(processSlug, StandardCharsets.UTF_8);
             JsonElement response = client.get(path, token);
             return wrapJsonContent(id, response);
@@ -245,7 +249,7 @@ public class McpToolExecutor {
 
     public static String runProcess(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String processId = args.get("process_slug").getAsString();
+            String processId = slugify(args.get("process_value").getAsString());
             JsonObject params = args.has("parameters") ? args.get("parameters").getAsJsonObject() : new JsonObject();
             
             JsonObject payload = params.size() > 0 ? params : new JsonObject();
@@ -367,7 +371,7 @@ public class McpToolExecutor {
 
     public static String get_window_tabs(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs";
             JsonElement response = client.get(path, token);
             return wrapJsonContent(id, response);
@@ -378,8 +382,8 @@ public class McpToolExecutor {
 
     public static String get_window_tab_fields(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/fields";
             JsonElement response = client.get(path, token);
             return wrapJsonContent(id, response);
@@ -390,7 +394,7 @@ public class McpToolExecutor {
 
     public static String get_window_records(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
             String filter = args.has("filter") ? args.get("filter").getAsString() : "";
             String sortColumn = args.has("sort_column") ? args.get("sort_column").getAsString() : "";
             int pageNo = args.has("page_no") ? args.get("page_no").getAsInt() : 0;
@@ -410,7 +414,7 @@ public class McpToolExecutor {
 
     public static String create_window_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
             JsonObject data = args.get("data").getAsJsonObject();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8);
             JsonElement response = client.post(path, data, token);
@@ -422,7 +426,7 @@ public class McpToolExecutor {
 
     public static String get_window_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             String expand = args.has("expand") ? args.get("expand").getAsString() : "";
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/" + recordId;
@@ -438,7 +442,7 @@ public class McpToolExecutor {
 
     public static String print_window_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/" + recordId + "/print";
             JsonElement response = client.get(path, token);
@@ -450,8 +454,8 @@ public class McpToolExecutor {
 
     public static String get_window_tab_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId;
             JsonElement response = client.get(path, token);
@@ -463,8 +467,8 @@ public class McpToolExecutor {
 
     public static String update_window_tab_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             JsonObject data = args.get("data").getAsJsonObject();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId;
@@ -477,8 +481,8 @@ public class McpToolExecutor {
 
     public static String delete_window_tab_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId;
             JsonElement response = client.delete(path, token);
@@ -490,10 +494,10 @@ public class McpToolExecutor {
 
     public static String get_child_tab_records(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
-            String childTabSlug = args.get("child_tab_slug").getAsString();
+            String childTabSlug = slugify(args.get("child_tab_name").getAsString());
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "/" + URLEncoder.encode(childTabSlug, StandardCharsets.UTF_8);
             JsonElement response = client.get(path, token);
             return wrapJsonContent(id, response);
@@ -504,10 +508,10 @@ public class McpToolExecutor {
 
     public static String create_child_tab_record(String id, JsonObject args, String token, RestApiClient client) {
         try {
-            String windowSlug = args.get("window_slug").getAsString();
-            String tabSlug = args.get("tab_slug").getAsString();
+            String windowSlug = slugify(args.get("window_name").getAsString());
+            String tabSlug = slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
-            String childTabSlug = args.get("child_tab_slug").getAsString();
+            String childTabSlug = slugify(args.get("child_tab_name").getAsString());
             JsonObject data = args.get("data").getAsJsonObject();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/" + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "/" + URLEncoder.encode(childTabSlug, StandardCharsets.UTF_8);
             JsonElement response = client.post(path, data, token);
@@ -541,4 +545,19 @@ public class McpToolExecutor {
         JsonObject result = new JsonObject(); result.add("content", content);
         return McpServiceImpl.createSuccess(id, result);
     }
+    
+    private static final Pattern NONLATIN = Pattern.compile("[^\\w_-]");  
+	private static final Pattern SEPARATORS = Pattern.compile("[\\s\\p{Punct}&&[^-]&&[^_]]");
+	
+    /**
+	 * convert arbitrary text to slug
+	 * @param input
+	 * @return slug
+	 */
+	public static String slugify(String input) {  
+		String noseparators = SEPARATORS.matcher(input).replaceAll("-");
+	    String normalized = Normalizer.normalize(noseparators, Form.NFD);
+	    String slug = NONLATIN.matcher(normalized).replaceAll("");
+	    return slug.toLowerCase(Locale.ENGLISH).replaceAll("-{2,}","-").replaceAll("^-|-$","");
+	}
 }
