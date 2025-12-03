@@ -69,7 +69,7 @@
 - With multiple token, you can only use one at a time and use "excluded" to disable the other. You need to restart Gemini CLI after changing the "excluded" value in settings.json file.
 
 # Demo Video
-- Searc for Business Partner Contact: https://youtu.be/TyNPor3M_pY
+- Search for Business Partner Contact: https://youtu.be/TyNPor3M_pY
 - Run process: https://youtu.be/jFjkPRrlzLU
 - Create record with Message window: https://youtu.be/dutEDBLrbNg
 - Working with server jobs: https://youtu.be/d5yXvsTKSk4
