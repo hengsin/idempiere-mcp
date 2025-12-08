@@ -41,7 +41,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class RestApiClient {
-    
+
     private final HttpClient client;
     private final Gson gson;
     private final String baseUrl;
@@ -74,17 +74,17 @@ public class RestApiClient {
     public String getYaml(String path, String token) throws Exception {
         return executeRaw("GET", path, null, token, "application/yaml");
     }
-    
+
     public byte[] getBinary(String path, String token, String accept) throws Exception {
         return executeBinary("GET", path, null, token, accept);
     }
 
     private JsonElement execute(String method, String path, JsonObject body, String token) throws Exception {
         String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
-        
+
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Authorization", "Bearer " + token) 
+                .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json");
 
@@ -108,11 +108,12 @@ public class RestApiClient {
                 throw new IOException("API Error " + response.statusCode() + ": " + response.body());
             }
         }
-        
+
         return JsonParser.parseString(response.body());
     }
 
-    private String executeRaw(String method, String path, JsonObject body, String token, String accept) throws Exception {
+    private String executeRaw(String method, String path, JsonObject body, String token, String accept)
+            throws Exception {
         String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -133,7 +134,42 @@ public class RestApiClient {
         return response.body();
     }
 
-    private byte[] executeBinary(String method, String path, JsonObject body, String token, String accept) throws Exception {
+    public JsonElement putBinary(String path, byte[] data, String token, java.util.Map<String, String> headers)
+            throws Exception {
+        String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", "Bearer " + token);
+
+        if (headers != null) {
+            for (java.util.Map.Entry<String, String> entry : headers.entrySet()) {
+                builder.header(entry.getKey(), entry.getValue());
+            }
+        }
+
+        // If content type is not set in headers, default to octet-stream
+        if (headers == null || !headers.containsKey("Content-Type")) {
+            builder.header("Content-Type", "application/octet-stream");
+        }
+
+        builder.PUT(BodyPublishers.ofByteArray(data));
+
+        HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() >= 300) {
+            try {
+                return JsonParser.parseString(response.body());
+            } catch (Exception e) {
+                throw new IOException("API Error " + response.statusCode() + ": " + response.body());
+            }
+        }
+
+        return JsonParser.parseString(response.body());
+    }
+
+    private byte[] executeBinary(String method, String path, JsonObject body, String token, String accept)
+            throws Exception {
         String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
