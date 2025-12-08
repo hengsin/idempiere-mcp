@@ -189,4 +189,33 @@ public class RestApiClient {
         }
         return response.body();
     }
+
+    public String login(String userName, String password) throws Exception {
+        String url = baseUrl + "/auth/tokens";
+        // Create AuthenticationRequest body
+        JsonObject body = new JsonObject();
+        body.addProperty("userName", userName);
+        body.addProperty("password", password);
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .POST(BodyPublishers.ofString(gson.toJson(body)));
+
+        HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() >= 300) {
+            throw new IOException("Login Failed " + response.statusCode() + ": " + response.body());
+        }
+
+        // Parse response to extract token
+        // Response format: { "token": "..." }
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        if (json.has("token")) {
+            return json.get("token").getAsString();
+        } else {
+            throw new IOException("Token not found in login response: " + response.body());
+        }
+    }
 }
