@@ -67,6 +67,7 @@
 }
 ```
 - With multiple token, you can only use one at a time and use "excluded" to disable the other. You need to restart Gemini CLI after changing the "excluded" value in settings.json file.
+- Install https://github.com/castle-studio-work/geminicli-manage-addon for a command line tool to manage multiple MCP Server instance for Gemini CLI
 
 # Demo Video
 - Search for Business Partner Contact: https://youtu.be/TyNPor3M_pY
