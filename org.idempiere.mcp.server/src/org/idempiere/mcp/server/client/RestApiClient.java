@@ -25,14 +25,16 @@
 **********************************************************************/
 package org.idempiere.mcp.server.client;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.time.Duration;
+import java.util.Map;
+import java.util.logging.Level;
 
+import org.compiere.util.CLogger;
 import org.idempiere.mcp.server.config.McpConfig;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -42,6 +44,7 @@ import com.google.gson.JsonParser;
 
 public class RestApiClient {
 
+    private final CLogger log = CLogger.getCLogger(RestApiClient.class);
     private final HttpClient client;
     private final Gson gson;
     private final String baseUrl;
@@ -79,120 +82,100 @@ public class RestApiClient {
         return executeBinary("GET", path, null, token, accept);
     }
 
-    private JsonElement execute(String method, String path, JsonObject body, String token) throws Exception {
+    private HttpRequest.Builder createBuilder(String path, String token, String accept) {
         String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
+
+        if (log.isLoggable(Level.FINE)) {
+            log.fine("Creating request for URL: " + url);
+        }
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Authorization", "Bearer " + token)
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json");
+                .header("Accept", accept != null ? accept : "application/json");
 
-        if ("POST".equals(method)) {
-            builder.POST(BodyPublishers.ofString(gson.toJson(body)));
-        } else if ("PUT".equals(method)) {
-            builder.PUT(BodyPublishers.ofString(gson.toJson(body)));
-        } else if ("DELETE".equals(method)) {
-            builder.DELETE();
-        } else {
-            builder.GET();
+        if (token != null) {
+            builder.header("Authorization", "Bearer " + token);
+        }
+
+        return builder;
+    }
+
+    private JsonElement execute(String method, String path, JsonObject body, String token) throws Exception {
+        HttpRequest.Builder builder = createBuilder(path, token, "application/json");
+        builder.header("Content-Type", "application/json");
+        setRequestMethod(builder, method, body);
+
+        if (log.isLoggable(Level.INFO)) {
+            log.info("Executing " + method + " " + path);
         }
 
         HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() >= 300) {
-            // Attempt to return the error JSON if available
-            try {
-                return JsonParser.parseString(response.body());
-            } catch (Exception e) {
-                throw new IOException("API Error " + response.statusCode() + ": " + response.body());
-            }
-        }
-
-        return JsonParser.parseString(response.body());
+        return handleResponse(response);
     }
 
     private String executeRaw(String method, String path, JsonObject body, String token, String accept)
             throws Exception {
-        String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Authorization", "Bearer " + token)
-                .header("Accept", accept)
-                .header("Content-Type", "application/json");
-        if ("POST".equals(method)) {
-            builder.POST(BodyPublishers.ofString(gson.toJson(body)));
-        } else if ("PUT".equals(method)) {
-            builder.PUT(BodyPublishers.ofString(gson.toJson(body)));
-        } else {
-            builder.GET();
+        HttpRequest.Builder builder = createBuilder(path, token, accept);
+        builder.header("Content-Type", "application/json");
+        setRequestMethod(builder, method, body);
+
+        if (log.isLoggable(Level.INFO)) {
+            log.info("Executing Raw " + method + " " + path);
         }
+
         HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return response.body();
+    }
+
+    private byte[] executeBinary(String method, String path, JsonObject body, String token, String accept)
+            throws Exception {
+        HttpRequest.Builder builder = createBuilder(path, token, accept);
+        builder.header("Content-Type", "application/json");
+        setRequestMethod(builder, method, body);
+
+        if (log.isLoggable(Level.INFO)) {
+            log.info("Executing Binary " + method + " " + path);
+        }
+
+        HttpResponse<byte[]> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+
         if (response.statusCode() >= 300) {
-            throw new IOException("API Error " + response.statusCode() + ": " + response.body());
+            String errorBody = new String(response.body());
+            throw new McpApiException(response.statusCode(), errorBody);
         }
         return response.body();
     }
 
-    public JsonElement putBinary(String path, byte[] data, String token, java.util.Map<String, String> headers)
+    public JsonElement putBinary(String path, byte[] data, String token, Map<String, String> headers)
             throws Exception {
-        String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Authorization", "Bearer " + token);
+        // Use createBuilder but we might need to override headers or add them
+        // createBuilder sets Accept if we pass it, but here we might not care about
+        // Accept or it's default
+        HttpRequest.Builder builder = createBuilder(path, token, null);
 
         if (headers != null) {
-            for (java.util.Map.Entry<String, String> entry : headers.entrySet()) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
                 builder.header(entry.getKey(), entry.getValue());
             }
         }
 
-        // If content type is not set in headers, default to octet-stream
         if (headers == null || !headers.containsKey("Content-Type")) {
             builder.header("Content-Type", "application/octet-stream");
         }
 
         builder.PUT(BodyPublishers.ofByteArray(data));
 
+        if (log.isLoggable(Level.INFO)) {
+            log.info("Executing PUT Binary " + path);
+        }
+
         HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() >= 300) {
-            try {
-                return JsonParser.parseString(response.body());
-            } catch (Exception e) {
-                throw new IOException("API Error " + response.statusCode() + ": " + response.body());
-            }
-        }
-
-        return JsonParser.parseString(response.body());
-    }
-
-    private byte[] executeBinary(String method, String path, JsonObject body, String token, String accept)
-            throws Exception {
-        String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Authorization", "Bearer " + token)
-                .header("Accept", accept)
-                .header("Content-Type", "application/json");
-        if ("POST".equals(method)) {
-            builder.POST(BodyPublishers.ofString(gson.toJson(body)));
-        } else if ("PUT".equals(method)) {
-            builder.PUT(BodyPublishers.ofString(gson.toJson(body)));
-        } else {
-            builder.GET();
-        }
-        HttpResponse<byte[]> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-        if (response.statusCode() >= 300) {
-            throw new IOException("API Error " + response.statusCode() + ": " + new String(response.body()));
-        }
-        return response.body();
+        return handleResponse(response);
     }
 
     public String login(String userName, String password) throws Exception {
         String url = baseUrl + "/auth/tokens";
-        // Create AuthenticationRequest body
         JsonObject body = new JsonObject();
         body.addProperty("userName", userName);
         body.addProperty("password", password);
@@ -203,19 +186,52 @@ public class RestApiClient {
                 .header("Content-Type", "application/json")
                 .POST(BodyPublishers.ofString(gson.toJson(body)));
 
+        if (log.isLoggable(Level.INFO)) {
+            log.info("Logging in user: " + userName);
+        }
+
         HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() >= 300) {
-            throw new IOException("Login Failed " + response.statusCode() + ": " + response.body());
+            throw new McpApiException(response.statusCode(), response.body());
         }
 
-        // Parse response to extract token
-        // Response format: { "token": "..." }
         JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
         if (json.has("token")) {
             return json.get("token").getAsString();
         } else {
-            throw new IOException("Token not found in login response: " + response.body());
+            throw new McpApiException(response.statusCode(), "Token not found in login response: " + response.body());
         }
+    }
+
+    private void setRequestMethod(HttpRequest.Builder builder, String method, JsonObject body) {
+        if ("POST".equals(method)) {
+            builder.POST(BodyPublishers.ofString(gson.toJson(body != null ? body : new JsonObject())));
+        } else if ("PUT".equals(method)) {
+            builder.PUT(BodyPublishers.ofString(gson.toJson(body != null ? body : new JsonObject())));
+        } else if ("DELETE".equals(method)) {
+            builder.DELETE();
+        } else {
+            builder.GET();
+        }
+    }
+
+    private void checkResponse(HttpResponse<?> response) throws McpApiException {
+        if (response.statusCode() >= 300) {
+            String bodyStr = "";
+            if (response.body() instanceof String) {
+                bodyStr = (String) response.body();
+            } else if (response.body() instanceof byte[]) {
+                bodyStr = new String((byte[]) response.body());
+            } else {
+                bodyStr = String.valueOf(response.body());
+            }
+            throw new McpApiException(response.statusCode(), bodyStr);
+        }
+    }
+
+    private JsonElement handleResponse(HttpResponse<String> response) throws McpApiException {
+        checkResponse(response);
+        return JsonParser.parseString(response.body());
     }
 }

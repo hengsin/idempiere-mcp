@@ -60,6 +60,8 @@ public class McpServlet extends HttpServlet {
 	private static final String SSE_GET_PATH = "/sse";
 	private static final String SSE_MESSAGE_EVENT = "message";
 	private static final String SESSION_ID_PARAMETER = "sessionId";
+	private static final String HEADER_AUTHORIZATION = "Authorization";
+	private static final String PREFIX_BEARER = "Bearer ";
 
 	private static final String STREAMING_PATH = "/streaming";
 	private static final String STREAMING_SESSION_HEADER = "Mcp-Session-Id";
@@ -75,11 +77,15 @@ public class McpServlet extends HttpServlet {
 	private static final String ENV_CLEANUP_INTERVAL_MIN = "MCP_CLEANUP_INTERVAL_MINUTES";
 	private static final String ENV_CLEANUP_INTERVAL_MS = "MCP_CLEANUP_INTERVAL_MS";
 	private static final String ENV_HEARTBEAT_INTERVAL_MS = "MCP_HEARTBEAT_INTERVAL_MS";
+	private static final String ENV_MCP_CORS_ORIGIN = "MCP_CORS_ORIGIN";
+	private static final String ENV_THREAD_POOL_SIZE = "MCP_THREAD_POOL_SIZE";
 	// Configurable values
 	private String protocolVersion = DEFAULT_MCP_PROTOCOL_VERSION;
 	private long streamingSessionTtlMs = DEFAULT_STREAMING_SESSION_TTL_MS;
 	private long cleanupIntervalMs = DEFAULT_CLEANUP_INTERVAL_MS;
 	private long heartbeatIntervalMs = 15000; // Default 15s heartbeat
+	private String corsOrigin = "*";
+	private int threadPoolSize = 100;
 	private static final CLogger log = CLogger.getCLogger(McpServlet.class);
 
 	private ExecutorService requestExecutor;
@@ -105,10 +111,10 @@ public class McpServlet extends HttpServlet {
 				TimeUnit.MILLISECONDS);
 		cleanupScheduler.scheduleAtFixedRate(this::sendHeartbeat, heartbeatIntervalMs, heartbeatIntervalMs,
 				TimeUnit.MILLISECONDS);
-		requestExecutor = Executors.newCachedThreadPool();
+		requestExecutor = Executors.newFixedThreadPool(threadPoolSize);
 		log.info("MCP Servlet initialized. Session cleanup scheduled every " + cleanupIntervalMs
 				+ " ms, Heartbeat every " + heartbeatIntervalMs + " ms, TTL=" + streamingSessionTtlMs + " ms, protocol="
-				+ protocolVersion);
+				+ protocolVersion + ", threadPool=" + threadPoolSize);
 	}
 
 	@Override
@@ -129,26 +135,27 @@ public class McpServlet extends HttpServlet {
 			if (pv != null && !pv.trim().isEmpty()) {
 				protocolVersion = pv.trim();
 			}
-			// TTL: prefer ms, fallback to minutes
-			String ttlMs = System.getenv(ENV_STREAMING_SESSION_TTL_MS);
-			String ttlMin = System.getenv(ENV_STREAMING_SESSION_TTL_MIN);
-			if (ttlMs != null && !ttlMs.trim().isEmpty()) {
-				streamingSessionTtlMs = Long.parseLong(ttlMs.trim());
-			} else if (ttlMin != null && !ttlMin.trim().isEmpty()) {
-				streamingSessionTtlMs = TimeUnit.MINUTES.toMillis(Long.parseLong(ttlMin.trim()));
+
+			String cors = System.getenv(ENV_MCP_CORS_ORIGIN);
+			if (cors != null && !cors.trim().isEmpty()) {
+				corsOrigin = cors.trim();
 			}
-			// Cleanup: prefer ms, fallback to minutes
-			String clMs = System.getenv(ENV_CLEANUP_INTERVAL_MS);
-			String clMin = System.getenv(ENV_CLEANUP_INTERVAL_MIN);
-			if (clMs != null && !clMs.trim().isEmpty()) {
-				cleanupIntervalMs = Long.parseLong(clMs.trim());
-			} else if (clMin != null && !clMin.trim().isEmpty()) {
-				cleanupIntervalMs = TimeUnit.MINUTES.toMillis(Long.parseLong(clMin.trim()));
-			}
+
+			streamingSessionTtlMs = getLongEnv(ENV_STREAMING_SESSION_TTL_MS, ENV_STREAMING_SESSION_TTL_MIN,
+					DEFAULT_STREAMING_SESSION_TTL_MS);
+			cleanupIntervalMs = getLongEnv(ENV_CLEANUP_INTERVAL_MS, ENV_CLEANUP_INTERVAL_MIN,
+					DEFAULT_CLEANUP_INTERVAL_MS);
+
 			// Heartbeat
 			String hbMs = System.getenv(ENV_HEARTBEAT_INTERVAL_MS);
 			if (hbMs != null && !hbMs.trim().isEmpty()) {
 				heartbeatIntervalMs = Long.parseLong(hbMs.trim());
+			}
+
+			// Thread Pool
+			String tpSize = System.getenv(ENV_THREAD_POOL_SIZE);
+			if (tpSize != null && !tpSize.trim().isEmpty()) {
+				threadPoolSize = Integer.parseInt(tpSize.trim());
 			}
 		} catch (Exception e) {
 			log.log(Level.WARNING, "Failed to load MCP servlet config from environment", e);
@@ -161,6 +168,21 @@ public class McpServlet extends HttpServlet {
 		if (streamingSessionTtlMs < TimeUnit.MINUTES.toMillis(1)) {
 			streamingSessionTtlMs = TimeUnit.MINUTES.toMillis(1);
 		}
+	}
+
+	private long getLongEnv(String keyMs, String keyMin, long defaultValue) {
+		try {
+			String valMs = System.getenv(keyMs);
+			String valMin = System.getenv(keyMin);
+			if (valMs != null && !valMs.trim().isEmpty()) {
+				return Long.parseLong(valMs.trim());
+			} else if (valMin != null && !valMin.trim().isEmpty()) {
+				return TimeUnit.MINUTES.toMillis(Long.parseLong(valMin.trim()));
+			}
+		} catch (Exception e) {
+			log.log(Level.WARNING, "Failed to parse env vars: " + keyMs + " or " + keyMin, e);
+		}
+		return defaultValue;
 	}
 
 	private void cleanupSessions() {
@@ -210,18 +232,18 @@ public class McpServlet extends HttpServlet {
 	}
 
 	private boolean checkAuthorizationToken(HttpServletRequest req) {
-		String authHeader = req.getHeader("Authorization");
-		if (authHeader != null && authHeader.startsWith("Bearer ")) {
-			String token = authHeader.substring(7).trim();
+		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
+		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
+			String token = authHeader.substring(PREFIX_BEARER.length()).trim();
 			return !Util.isEmpty(token, true);
 		}
 		return false;
 	}
 
 	private String extractToken(HttpServletRequest req) {
-		String authHeader = req.getHeader("Authorization");
-		if (authHeader != null && authHeader.startsWith("Bearer ")) {
-			return authHeader.substring(7).trim();
+		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
+		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
+			return authHeader.substring(PREFIX_BEARER.length()).trim();
 		}
 		return "";
 	}
@@ -371,7 +393,7 @@ public class McpServlet extends HttpServlet {
 		resp.setCharacterEncoding("UTF-8");
 		resp.setHeader("Cache-Control", "no-cache");
 		resp.setHeader("Connection", "keep-alive");
-		resp.setHeader("Access-Control-Allow-Origin", "*");
+		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
 		// Expose headers so browser clients can read them
 		resp.setHeader("Access-Control-Expose-Headers",
 				STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER + ", Content-Type");
@@ -414,11 +436,7 @@ public class McpServlet extends HttpServlet {
 		if (STREAMING_PATH.equals(path)) {
 			String sessionId = req.getHeader(STREAMING_SESSION_HEADER);
 			boolean isHandshake = Util.isEmpty(sessionId, true);
-			StringBuilder sb = new StringBuilder();
-			String line;
-			while ((line = req.getReader().readLine()) != null)
-				sb.append(line);
-			String jsonBody = sb.toString();
+			String jsonBody = readBody(req);
 			if (isHandshake) {
 				// Create new session and process initialize synchronously
 				sessionId = UUID.randomUUID().toString();
@@ -476,11 +494,7 @@ public class McpServlet extends HttpServlet {
 		}
 
 		// Read Request Body
-		StringBuilder sb = new StringBuilder();
-		String line;
-		while ((line = req.getReader().readLine()) != null)
-			sb.append(line);
-		String jsonBody = sb.toString();
+		String jsonBody = readBody(req);
 
 		// Handle the Request
 		// Note: In MCP SSE transport, we respond 202 Accepted to the POST,
@@ -489,6 +503,15 @@ public class McpServlet extends HttpServlet {
 
 		// Process logic in a separate thread or immediately (sync for simplicity here)
 		processSSERequest(sessionId, jsonBody, req, resp);
+	}
+
+	private String readBody(HttpServletRequest req) throws IOException {
+		StringBuilder sb = new StringBuilder();
+		String line;
+		java.io.BufferedReader reader = req.getReader();
+		while ((line = reader.readLine()) != null)
+			sb.append(line);
+		return sb.toString();
 	}
 
 	/**
@@ -545,7 +568,7 @@ public class McpServlet extends HttpServlet {
 	// Allow Options for CORS Pre-flight checks
 	@Override
 	protected void doOptions(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		resp.setHeader("Access-Control-Allow-Origin", "*");
+		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
 		resp.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
 		resp.setHeader("Access-Control-Allow-Headers",
 				"Content-Type, Authorization, " + STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER);
