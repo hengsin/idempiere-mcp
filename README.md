@@ -1,3 +1,9 @@
+# iDempiere MCP Server
+This project implements a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [iDempiere ERP](https://www.idempiere.org/). It bridges the gap between AI assistants (like Google Gemini and Anthropic Claude) and iDempiere, enabling autonomous interaction with the ERP system to retrieve data, execute processes, and manage records.
+
+# Dependency
+- [iDempiere REST](https://github.com/bxservice/idempiere-rest)
+
 # To Test from Eclipse
 - import idempiere-rest project into your Eclipse workspace.
 - Import the org.idempiere.mcp.server project into your Eclipse workspace.
@@ -75,8 +81,31 @@
 - Create record with Message window: https://youtu.be/dutEDBLrbNg
 - Working with server jobs: https://youtu.be/d5yXvsTKSk4
 
+# Environment Variables
+- `IDEMPIERE_API_URL`: The base URL for the iDempiere REST API. Default: `http://localhost:8080/api/v1`
+- `MCP_CLEANUP_INTERVAL_MINUTES`: Interval in minutes to clean up expired sessions.
+- `MCP_CLEANUP_INTERVAL_MS`: Interval in milliseconds to clean up expired sessions. Default: `600000` (10 minutes).
+- `MCP_CORS_ORIGIN`: Access-Control-Allow-Origin header value. Default: `*`.
+- `MCP_HEARTBEAT_INTERVAL_MS`: Interval in milliseconds to send heartbeat (ping) messages. Default: `15000` (15 seconds).
+- `MCP_PROTOCOL_VERSION`: The version of the Model Context Protocol supported. Default: `2025-06-18`.
+- `MCP_STREAMING_SESSION_TTL_MINUTES`: Time-to-live for streaming sessions in minutes.
+- `MCP_STREAMING_SESSION_TTL_MS`: Time-to-live for streaming sessions in milliseconds. Default: `1800000` (30 minutes).
+- `MCP_THREAD_POOL_SIZE`: Size of the thread pool for handling requests. Default: `100`.
+
 # Issues
 - Can't get it to work with Claude Desktop
 
 # Status
 - A proof of concept prototype, use with care.
+
+# Build
+- With the following layout:
+```
+idempiere-workspace/
+├── idempiere-rest
+└── idempiere
+```
+- At idempiere-workspace, `git clone https://github.com/hengsin/idempiere-mcp.git`.
+- At idempiere-workspace/idempiere-mcp, `mvn verify`.
+- Build artifact - idempiere-workspace/idempiere-mcp/target/org.idempiere.mcp.server-1.0.0-SNAPSHOT.jar .
+- For testing, install org.idempiere.mcp.server-1.0.0-SNAPSHOT.jar using OSGi console of Felix Web Console (Must have install idempiere-rest before this).
