@@ -224,8 +224,8 @@ public class McpMiscExecutor {
                 JsonElement response = client.get(sb.toString(), token);
                 return McpExecutorUtils.wrapJsonContent(id, response);
             } else {
-                byte[] response = client.getBinary(sb.toString(), token, "image/png");
-                return McpExecutorUtils.wrapBinaryContent(id, response, "image/png");
+                byte[] response = client.getBinary(sb.toString(), token, "*/*");
+                return McpExecutorUtils.wrapBinaryContent(id, response, "*/*");
             }
         } catch (Exception e) {
             return McpServiceImpl.createError(id, -32000, "Get Chart Error: " + e.getMessage());
