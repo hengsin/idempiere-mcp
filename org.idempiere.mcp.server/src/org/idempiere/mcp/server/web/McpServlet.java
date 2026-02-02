@@ -231,31 +231,32 @@ public class McpServlet extends HttpServlet {
 		}
 	}
 
-	private boolean checkAuthorizationToken(HttpServletRequest req) {
-		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
-		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
-			String token = authHeader.substring(PREFIX_BEARER.length()).trim();
-			return !Util.isEmpty(token, true);
+	/**
+	 * Update or remove token for a session
+	 * 
+	 * @param sessionId
+	 * @param token     null or empty string to remove existing token of a session
+	 */
+	public static void updateToken(String sessionId, String token) {
+		if (!Util.isEmpty(sessionId, true) && !Util.isEmpty(token, true)) {
+			tokens.put(sessionId, token);
+		} else if (tokens.containsKey(sessionId)) {
+			tokens.remove(sessionId);
 		}
-		return false;
 	}
 
 	private String extractToken(HttpServletRequest req) {
 		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
 		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
-			return authHeader.substring(PREFIX_BEARER.length()).trim();
+			String token = authHeader.substring(PREFIX_BEARER.length()).trim();
+			return Util.isEmpty(token, true) ? null : token;
 		}
-		return "";
+		return null;
 	}
 
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		setCommonResponseHeader(resp);
-		// Token required for all endpoints
-		if (!checkAuthorizationToken(req)) {
-			resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-			return;
-		}
 		String path = req.getPathInfo();
 		if (SSE_GET_PATH.equals(path)) {
 			resp.setContentType("text/event-stream");
@@ -267,7 +268,8 @@ public class McpServlet extends HttpServlet {
 			String sessionId = UUID.randomUUID().toString();
 			sessions.put(sessionId, asyncContext);
 			String token = extractToken(req);
-			tokens.put(sessionId, token);
+			if (token != null)
+				tokens.put(sessionId, token);
 			lastAccess.put(sessionId, System.currentTimeMillis());
 
 			// Cleanup on error/timeout
@@ -293,11 +295,6 @@ public class McpServlet extends HttpServlet {
 			String sessionId = req.getHeader(STREAMING_SESSION_HEADER);
 			if (Util.isEmpty(sessionId, true)) {
 				resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing Mcp-Session-Id header");
-				return;
-			}
-			// must have existing session token from handshake
-			if (!tokens.containsKey(sessionId)) {
-				resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired Session ID");
 				return;
 			}
 			// If there is already an SSE context, replace
@@ -327,11 +324,6 @@ public class McpServlet extends HttpServlet {
 
 		// status endpoint
 		if ("/status".equals(path)) {
-			// Require auth like other endpoints
-			if (!checkAuthorizationToken(req)) {
-				resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-				return;
-			}
 			resp.setContentType("application/json");
 			setCommonResponseHeader(resp);
 			JsonObject json = new JsonObject();
@@ -421,12 +413,6 @@ public class McpServlet extends HttpServlet {
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		setCommonResponseHeader(resp);
 		String path = req.getPathInfo();
-		if (!checkAuthorizationToken(req)) {
-			resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-			resp.setContentType("application/json");
-			resp.getWriter().write("{\"error\":\"Unauthorized\"}");
-			return;
-		}
 
 		if (SSE_POST_PATH.equals(path)) {
 			doSSERequest(req, resp);
@@ -441,7 +427,8 @@ public class McpServlet extends HttpServlet {
 				// Create new session and process initialize synchronously
 				sessionId = UUID.randomUUID().toString();
 				String token = extractToken(req);
-				tokens.put(sessionId, token);
+				if (token != null)
+					tokens.put(sessionId, token);
 				lastAccess.put(sessionId, System.currentTimeMillis());
 				resp.setHeader(STREAMING_SESSION_HEADER, sessionId);
 				resp.setContentType("application/json");
@@ -449,7 +436,7 @@ public class McpServlet extends HttpServlet {
 					IMcpService service = Service.locator().locate(IMcpService.class).getService();
 					String response = null;
 					if (service != null) {
-						response = service.processRequest(jsonBody, token);
+						response = service.processRequest(jsonBody, token, sessionId);
 						resp.setStatus(HttpServletResponse.SC_OK);
 						PrintWriter writer = resp.getWriter();
 						writer.write(response != null ? response : createErrorJson(-32603, "Empty response"));
@@ -471,11 +458,6 @@ public class McpServlet extends HttpServlet {
 				}
 				return;
 			} else {
-				// Message POST: must have existing session
-				if (!tokens.containsKey(sessionId)) {
-					resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or expired Session ID");
-					return;
-				}
 				lastAccess.put(sessionId, System.currentTimeMillis());
 				resp.setStatus(HttpServletResponse.SC_ACCEPTED); // response will be via SSE stream (GET)
 				processSSERequest(sessionId, jsonBody, req, resp);
@@ -488,7 +470,7 @@ public class McpServlet extends HttpServlet {
 	private void doSSERequest(HttpServletRequest req, HttpServletResponse resp) throws IOException {
 		String sessionId = req.getParameter(SESSION_ID_PARAMETER);
 
-		if (sessionId == null || !sessions.containsKey(sessionId) || !tokens.containsKey(sessionId)) {
+		if (sessionId == null || !sessions.containsKey(sessionId)) {
 			resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid or missing Session ID");
 			return;
 		}
@@ -532,7 +514,7 @@ public class McpServlet extends HttpServlet {
 				if (service != null) {
 					try {
 						String token = tokens.get(sessionId);
-						response = service.processRequest(jsonBody, token);
+						response = service.processRequest(jsonBody, token, sessionId);
 					} catch (Exception e) {
 						log.log(Level.WARNING, "MCP Execution Failed", e);
 						response = createErrorJson(-32603, "Internal Error");
@@ -591,12 +573,6 @@ public class McpServlet extends HttpServlet {
 	protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		setCommonResponseHeader(resp);
 		String path = req.getPathInfo();
-		if (!checkAuthorizationToken(req)) {
-			resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-			resp.setContentType("application/json");
-			resp.getWriter().write("{\"error\":\"Unauthorized\"}");
-			return;
-		}
 
 		if (STREAMING_PATH.equals(path)) {
 			String sessionId = req.getHeader(STREAMING_SESSION_HEADER);

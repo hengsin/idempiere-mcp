@@ -26,5 +26,5 @@
 package org.idempiere.mcp.server.api;
 
 public interface IMcpService {
-    String processRequest(String jsonRequest, String authToken);
+    String processRequest(String jsonRequest, String authToken, String sessionId);
 }
