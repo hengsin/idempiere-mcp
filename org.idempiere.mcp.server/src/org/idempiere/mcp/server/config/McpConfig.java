@@ -26,17 +26,12 @@
 package org.idempiere.mcp.server.config;
 
 import org.compiere.util.CLogger;
+import org.idempiere.mcp.server.web.McpServlet;
 
 public class McpConfig {
     
     @SuppressWarnings("unused")
 	private static final CLogger log = CLogger.getCLogger(McpConfig.class);
-
-    // --- Connectivity: iDempiere REST API Config ---
-    public static final String KEY_URL = "IDEMPIERE_API_URL";
-    
-    // Defaults
-    private static final String DEFAULT_URL = "http://localhost:8080/api/v1";
 
     public static String get(String key, String defaultValue) {
         String val = System.getenv(key);
@@ -47,6 +42,6 @@ public class McpConfig {
     }
 
     public static String getBaseUrl() { 
-        return get(KEY_URL, DEFAULT_URL); 
+        return McpServlet.getRestBaseURL(); 
     }
 }

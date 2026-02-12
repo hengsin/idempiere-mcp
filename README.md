@@ -16,30 +16,16 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 
 # Testing with https://github.com/modelcontextprotocol/inspector
 - npx @modelcontextprotocol/inspector
-- use http://localhost:8080/mcp/sse for SSE Transport Type
-- use http://localhost:8080/mcp/streaming for Stremable HTTP Transport Type
+- use http://localhost:8080/mcp for Stremable HTTP Transport Type
 - Authentication: Enable Authorization and enter Bearer `<Token>`
 
 # Testing with https://github.com/google-gemini/gemini-cli
 - Edit ~/.gemini/settings.json
-- SSE:
-```
-"mcpServers": {
-  "iDempiere": {
-    "url": "http://localhost:8080/mcp/sse",
-    "timeout": 30000,
-    "trust": true,
-    "headers": {
-      "Authorization": "Bearer <Token>"
-    }
-  }
-}
-```
 - Streamable HTTP:
 ```
 "mcpServers": {
   "iDempiere": {
-    "httpUrl": "http://localhost:8080/mcp/streaming",
+    "httpUrl": "http://localhost:8080/mcp/",
     "timeout": 30000,
     "trust": true,
     "headers": {
@@ -52,7 +38,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 ```
 "mcpServers": {
     "iDempiere-System": {
-      "httpUrl": "http://localhost:8080/mcp/streaming",
+      "httpUrl": "http://localhost:8080/mcp/",
       "timeout": 30000,
       "trust": true,
       "headers": {
@@ -60,7 +46,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
       }
     },
     "iDempiere-GardenWorld": {
-      "httpUrl": "http://localhost:8080/mcp/streaming",
+      "httpUrl": "http://localhost:8080/mcp/",
       "timeout": 30000,
       "trust": true,
       "headers": {
@@ -77,7 +63,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 - Install https://github.com/castle-studio-work/geminicli-manage-addon for a command line tool to manage multiple MCP Server instance for Gemini CLI
 - Without Authentication Token: remove the "header" property above. Authenticate with the create_auth_token tool instead.
    - Example: authenticate idempiere with GardenAdmin, GardenAdmin, clientId:GardenWorld, organizationId:HQ, roleId:GardenWorld Admin, warehouseId:HQ Warehouse
-
+- Note that the trailing "/" in the URL is significant, "http://localhost:8080/mcp/" work but "http://localhost:8080/mcp" doesn't. For some reason, the servlet container will redirect (HTTP 301) "/mcp" to "/mcp/" and that breaks the initialization flow.
 
 # Demo Video
 - Search for Business Partner Contact: https://youtu.be/TyNPor3M_pY
@@ -86,7 +72,6 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 - Working with server jobs: https://youtu.be/d5yXvsTKSk4
 
 # Environment Variables
-- `IDEMPIERE_API_URL`: The base URL for the iDempiere REST API. Default: `http://localhost:8080/api/v1`
 - `MCP_CLEANUP_INTERVAL_MINUTES`: Interval in minutes to clean up expired sessions.
 - `MCP_CLEANUP_INTERVAL_MS`: Interval in milliseconds to clean up expired sessions. Default: `600000` (10 minutes).
 - `MCP_CORS_ORIGIN`: Access-Control-Allow-Origin header value. Default: `*`.

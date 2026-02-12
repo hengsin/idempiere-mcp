@@ -29,8 +29,10 @@ import java.text.Normalizer;
 import java.text.Normalizer.Form;
 import java.util.Locale;
 import java.util.concurrent.Callable;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 
+import org.compiere.util.CLogger;
 import org.idempiere.mcp.server.client.McpApiException;
 
 import com.google.gson.Gson;
@@ -49,8 +51,10 @@ public class McpExecutorUtils {
         try {
             return action.call();
         } catch (McpApiException e) {
+        	CLogger.getCLogger(McpExecutorUtils.class).log(Level.SEVERE, e.getMessage(), e);
             return McpServiceImpl.createError(id, -32000, opName + " API Error: " + e.getMessage());
         } catch (Exception e) {
+        	CLogger.getCLogger(McpExecutorUtils.class).log(Level.SEVERE, e.getMessage(), e);
             return McpServiceImpl.createError(id, -32000, opName + " Error: " + e.getMessage());
         }
     }

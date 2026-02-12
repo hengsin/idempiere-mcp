@@ -47,7 +47,6 @@ public class RestApiClient {
     private final CLogger log = CLogger.getCLogger(RestApiClient.class);
     private final HttpClient client;
     private final Gson gson;
-    private final String baseUrl;
 
     public RestApiClient() {
         this.client = HttpClient.newBuilder()
@@ -55,7 +54,6 @@ public class RestApiClient {
                 .connectTimeout(Duration.ofSeconds(20))
                 .build();
         this.gson = new GsonBuilder().setPrettyPrinting().create();
-        this.baseUrl = McpConfig.getBaseUrl();
     }
 
     public JsonElement get(String path, String token) throws Exception {
@@ -83,7 +81,7 @@ public class RestApiClient {
     }
 
     private HttpRequest.Builder createBuilder(String path, String token, String accept) {
-        String url = baseUrl + (path.startsWith("/") ? path : "/" + path);
+        String url = McpConfig.getBaseUrl() + (path.startsWith("/") ? path : "/" + path);
 
         if (log.isLoggable(Level.FINE)) {
             log.fine("Creating request for URL: " + url);
@@ -175,7 +173,7 @@ public class RestApiClient {
     }
 
     public String login(String userName, String password) throws Exception {
-        String url = baseUrl + "/auth/tokens";
+        String url = McpConfig.getBaseUrl() + "/auth/tokens";
         JsonObject body = new JsonObject();
         body.addProperty("userName", userName);
         body.addProperty("password", password);

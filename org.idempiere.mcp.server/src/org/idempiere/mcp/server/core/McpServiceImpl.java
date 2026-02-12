@@ -80,7 +80,7 @@ public class McpServiceImpl implements IMcpService {
                                         return createError(requestId, -32601, "Method not found: " + method);
                         }
                 } catch (Exception e) {
-                        log.saveError("MCP Error", e);
+                        log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
                         return createError(requestId, -32603, "Internal Error: " + e.getMessage());
                 }
         }
