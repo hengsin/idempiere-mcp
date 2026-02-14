@@ -16,7 +16,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 
 # Testing with https://github.com/modelcontextprotocol/inspector
 - npx @modelcontextprotocol/inspector
-- use http://localhost:8080/mcp for Stremable HTTP Transport Type
+- use http://localhost:8080/mcp/ for Stremable HTTP Transport Type
 - Authentication: Enable Authorization and enter Bearer `<Token>`
 
 # Testing with https://github.com/google-gemini/gemini-cli
@@ -63,6 +63,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 - Install https://github.com/castle-studio-work/geminicli-manage-addon for a command line tool to manage multiple MCP Server instance for Gemini CLI
 - Without Authentication Token: remove the "header" property above. Authenticate with the create_auth_token tool instead.
    - Example: authenticate idempiere with GardenAdmin, GardenAdmin, clientId:GardenWorld, organizationId:HQ, roleId:GardenWorld Admin, warehouseId:HQ Warehouse
+   - Note that out of the box, you can't authenticate with SuperUser,System, clientId:0, roleId:0 due to the role type of the System Administrator role. You need to change the role type value of System Administrator role to empty or create a new System tenant role for REST API with role type = Web Service.
 - Note that the trailing "/" in the URL is significant, "http://localhost:8080/mcp/" work but "http://localhost:8080/mcp" doesn't. For some reason, the servlet container will redirect (HTTP 301) "/mcp" to "/mcp/" and that breaks the initialization flow.
 
 # Demo Video
