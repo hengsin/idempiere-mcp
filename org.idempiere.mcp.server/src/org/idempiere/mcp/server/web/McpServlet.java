@@ -54,7 +54,7 @@ import org.idempiere.mcp.server.api.IMcpService;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-@WebServlet(name = "McpServlet", urlPatterns = { "/", "/status" }, asyncSupported = true, loadOnStartup = 1)
+@WebServlet(name = "McpServlet", urlPatterns = { "/*" }, asyncSupported = true, loadOnStartup = 1)
 public class McpServlet extends HttpServlet {
 	private static final String STATUS_PATH = "/status";
 
