@@ -118,7 +118,7 @@ public class McpAuthExecutor {
      * @return MCP success/error response
      */
     public static String logout(String id, JsonObject args, String token, String sessionId, RestApiClient client) {
-        return McpExecutorUtils.execute(id, "Logout", () -> {
+        return McpExecutorUtils.execute(id, "idempiere_auth_logout", () -> {
             JsonObject body = new JsonObject();
             body.addProperty("token", token);
 
