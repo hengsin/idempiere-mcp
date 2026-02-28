@@ -52,9 +52,13 @@ public class McpViewExecutor {
             String path = "/views/" + URLEncoder.encode(viewName, StandardCharsets.UTF_8) + "/yaml";
             String yaml = client.getYaml(path, token);
             JsonObject item = new JsonObject();
-            item.addProperty("type", "text");
-            item.addProperty("mimeType", "application/yaml");
-            item.addProperty("text", yaml);
+            // Use EmbeddedResource for YAML content since TextContent doesn't support mimeType
+            item.addProperty("type", "resource");
+            JsonObject resource = new JsonObject();
+            resource.addProperty("uri", "idempiere://views/" + viewName + "/yaml");
+            resource.addProperty("mimeType", "application/yaml");
+            resource.addProperty("text", yaml);
+            item.add("resource", resource);
             JsonArray content = new JsonArray();
             content.add(item);
             JsonObject result = new JsonObject();

@@ -43,7 +43,7 @@ public class McpInfoExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "List Info Windows Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "List Info Windows Error: " + e.getMessage());
         }
     }
 
@@ -72,7 +72,7 @@ public class McpInfoExecutor {
             JsonElement response = client.get(sb.toString(), token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Info Window Data Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Info Window Data Error: " + e.getMessage());
         }
     }
 
@@ -83,7 +83,7 @@ public class McpInfoExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Info Window Columns Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Info Window Columns Error: " + e.getMessage());
         }
     }
 
@@ -94,7 +94,7 @@ public class McpInfoExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Info Window Processes Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Info Window Processes Error: " + e.getMessage());
         }
     }
 
@@ -105,7 +105,7 @@ public class McpInfoExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Info Window Related Infos Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Info Window Related Infos Error: " + e.getMessage());
         }
     }
 }

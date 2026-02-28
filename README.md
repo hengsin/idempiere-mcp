@@ -82,9 +82,6 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 - `MCP_STREAMING_SESSION_TTL_MS`: Time-to-live for streaming sessions in milliseconds. Default: `1800000` (30 minutes).
 - `MCP_THREAD_POOL_SIZE`: Size of the thread pool for handling requests. Default: `100`.
 
-# Issues
-- Can't get it to work with Claude Desktop
-
 # Status
 - A proof of concept prototype, use with care.
 

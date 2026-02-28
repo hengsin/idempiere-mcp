@@ -100,7 +100,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Node Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Node Error: " + e.getMessage());
         }
     }
 
@@ -111,7 +111,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Node Logs Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Node Logs Error: " + e.getMessage());
         }
     }
 
@@ -122,7 +122,7 @@ public class McpMiscExecutor {
             JsonElement response = client.delete(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Delete Node Logs Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Delete Node Logs Error: " + e.getMessage());
         }
     }
 
@@ -138,7 +138,7 @@ public class McpMiscExecutor {
             byte[] response = client.getBinary(path, token, "application/octet-stream");
             return McpExecutorUtils.wrapBinaryContent(id, response, "application/octet-stream");
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Node Log File Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Node Log File Error: " + e.getMessage());
         }
     }
 
@@ -149,7 +149,7 @@ public class McpMiscExecutor {
             JsonElement response = client.post(path, new JsonObject(), token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Rotate Node Log Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Rotate Node Log Error: " + e.getMessage());
         }
     }
 
@@ -171,7 +171,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(sb.toString(), token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "List Status Lines Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "List Status Lines Error: " + e.getMessage());
         }
     }
 
@@ -182,7 +182,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Status Line Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Status Line Error: " + e.getMessage());
         }
     }
 
@@ -196,7 +196,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Charts Data Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Charts Data Error: " + e.getMessage());
         }
     }
 
@@ -228,7 +228,7 @@ public class McpMiscExecutor {
                 return McpExecutorUtils.wrapBinaryContent(id, response, "*/*");
             }
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Chart Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Chart Error: " + e.getMessage());
         }
     }
 
@@ -239,7 +239,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Chart Data Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Chart Data Error: " + e.getMessage());
         }
     }
 
@@ -252,7 +252,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Menu Tree Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Menu Tree Error: " + e.getMessage());
         }
     }
 
@@ -264,7 +264,7 @@ public class McpMiscExecutor {
             JsonElement response = client.post("/uploads", data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Initiate Upload Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Initiate Upload Error: " + e.getMessage());
         }
     }
 
@@ -273,7 +273,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get("/uploads", token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "List Pending Uploads Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "List Pending Uploads Error: " + e.getMessage());
         }
     }
 
@@ -308,7 +308,7 @@ public class McpMiscExecutor {
             return McpExecutorUtils.wrapJsonContent(id, response);
 
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Upload Chunk Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Upload Chunk Error: " + e.getMessage());
         }
     }
 
@@ -322,7 +322,7 @@ public class McpMiscExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Upload Status Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Upload Status Error: " + e.getMessage());
         }
     }
 
@@ -333,7 +333,7 @@ public class McpMiscExecutor {
             JsonElement response = client.delete(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Cancel Upload Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Cancel Upload Error: " + e.getMessage());
         }
     }
 
@@ -350,7 +350,7 @@ public class McpMiscExecutor {
                 return McpExecutorUtils.wrapBinaryContent(id, response, "application/octet-stream");
             }
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Get Uploaded File Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Get Uploaded File Error: " + e.getMessage());
         }
     }
 
@@ -362,7 +362,7 @@ public class McpMiscExecutor {
             JsonElement response = client.post(path, data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Copy Uploaded File Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Copy Uploaded File Error: " + e.getMessage());
         }
     }
 
@@ -378,7 +378,7 @@ public class McpMiscExecutor {
             JsonElement response = client.post(path, data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Execute Batch Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Execute Batch Error: " + e.getMessage());
         }
     }
 }

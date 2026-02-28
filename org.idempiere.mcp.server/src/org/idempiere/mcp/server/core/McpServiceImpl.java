@@ -34,6 +34,7 @@ import java.util.logging.Level;
 import org.compiere.util.CLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -46,11 +47,13 @@ public class McpServiceImpl implements IMcpService {
 
         @Override
         public String processRequest(String jsonRequest, String authToken, String sessionId) {
+                JsonElement requestIdElement = null;
                 String requestId = null;
                 try {
                         JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
                         if (req.has("id") && !req.get("id").isJsonNull()) {
-                                requestId = req.get("id").getAsString();
+                                requestIdElement = req.get("id");
+                                requestId = requestIdElement.getAsString();
                         }
 
                         String method = req.get("method").getAsString();
@@ -59,29 +62,51 @@ public class McpServiceImpl implements IMcpService {
 
                         JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
 
+                        String response;
                         switch (method) {
                                 case "initialize":
-                                        return handleInitialize(requestId); // CHANGED
+                                        response = handleInitialize(requestId);
+                                        break;
                                 case "notifications/initialized":
                                         return null; // No response needed for notification
                                 case "notifications/cancelled":
                                         return null; // No response needed for notification
                                 case "ping":
-                                        return createSuccess(requestId, new JsonObject());
+                                        response = createSuccess(requestId, new JsonObject());
+                                        break;
                                 case "tools/list":
-                                        return handleListTools(requestId);
+                                        response = handleListTools(requestId);
+                                        break;
                                 case "tools/call":
-                                        return handleToolCall(requestId, params, authToken, sessionId);
+                                        response = handleToolCall(requestId, params, authToken, sessionId);
+                                        break;
                                 case "resources/list":
-                                        return handleListResources(requestId);
+                                        response = handleListResources(requestId);
+                                        break;
                                 case "resources/read":
-                                        return handleReadResource(requestId, params, authToken, sessionId);
+                                        response = handleReadResource(requestId, params, authToken, sessionId);
+                                        break;
                                 default:
-                                        return createError(requestId, -32601, "Method not found: " + method);
+                                        response = createError(requestId, -32601, "Method not found: " + method);
+                                        break;
                         }
+                        return normalizeResponseId(response, requestIdElement);
                 } catch (Exception e) {
                         log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
-                        return createError(requestId, -32603, "Internal Error: " + e.getMessage());
+                        return normalizeResponseId(createError(requestId, -32603, "Internal Error: " + e.getMessage()), requestIdElement);
+                }
+        }
+
+        private String normalizeResponseId(String response, JsonElement requestIdElement) {
+                if (response == null || requestIdElement == null) {
+                        return response;
+                }
+                try {
+                        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+                        json.add("id", requestIdElement.deepCopy());
+                        return json.toString();
+                } catch (Exception e) {
+                        return response;
                 }
         }
 
@@ -102,7 +127,7 @@ public class McpServiceImpl implements IMcpService {
                 serverInfo.addProperty("version", "1.0.0");
 
                 JsonObject result = new JsonObject();
-                result.addProperty("protocolVersion", "2025-06-18");
+                result.addProperty("protocolVersion", "2024-11-05");
                 result.add("capabilities", capabilities);
                 result.add("serverInfo", serverInfo);
 

@@ -52,11 +52,30 @@ public class McpExecutorUtils {
             return action.call();
         } catch (McpApiException e) {
         	CLogger.getCLogger(McpExecutorUtils.class).log(Level.SEVERE, e.getMessage(), e);
-            return McpServiceImpl.createError(id, -32000, opName + " API Error: " + e.getMessage());
+            // Use tool error format (isError: true) instead of JSON-RPC error for tool execution failures
+            return wrapToolError(id, opName + " API Error: " + e.getMessage());
         } catch (Exception e) {
         	CLogger.getCLogger(McpExecutorUtils.class).log(Level.SEVERE, e.getMessage(), e);
-            return McpServiceImpl.createError(id, -32000, opName + " Error: " + e.getMessage());
+            // Use tool error format (isError: true) instead of JSON-RPC error for tool execution failures
+            return wrapToolError(id, opName + " Error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Create a tool error response with isError flag as per MCP spec.
+     * Tool errors should return a successful result with isError=true, not a JSON-RPC error.
+     */
+    public static String wrapToolError(String id, String errorMessage) {
+        JsonObject item = new JsonObject();
+        item.addProperty("type", "text");
+        item.addProperty("text", errorMessage);
+
+        JsonArray content = new JsonArray();
+        content.add(item);
+        JsonObject result = new JsonObject();
+        result.add("content", content);
+        result.addProperty("isError", true);
+        return McpServiceImpl.createSuccess(id, result);
     }
 
     public static String wrapJsonContent(String id, JsonElement json) {
@@ -73,9 +92,20 @@ public class McpExecutorUtils {
 
     public static String wrapBinaryContent(String id, byte[] data, String mimeType) {
         JsonObject item = new JsonObject();
-        item.addProperty("type", "binary");
-        item.addProperty("mimeType", mimeType);
-        item.addProperty("data", java.util.Base64.getEncoder().encodeToString(data));
+        // Check if it's an image type - use ImageContent format
+        if (mimeType != null && mimeType.startsWith("image/")) {
+            item.addProperty("type", "image");
+            item.addProperty("data", java.util.Base64.getEncoder().encodeToString(data));
+            item.addProperty("mimeType", mimeType);
+        } else {
+            // For other binary types, use EmbeddedResource format
+            item.addProperty("type", "resource");
+            JsonObject resource = new JsonObject();
+            resource.addProperty("uri", "data:" + mimeType + ";base64,embedded");
+            resource.addProperty("mimeType", mimeType);
+            resource.addProperty("blob", java.util.Base64.getEncoder().encodeToString(data));
+            item.add("resource", resource);
+        }
 
         JsonArray content = new JsonArray();
         content.add(item);

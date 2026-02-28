@@ -43,7 +43,7 @@ public class McpWindowExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "List Windows Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "List Windows Error: " + e.getMessage());
         }
     }
 

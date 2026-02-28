@@ -27,6 +27,7 @@ package org.idempiere.mcp.server.web;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,7 +75,7 @@ public class McpServlet extends HttpServlet {
 	private static final String STREAMING_SESSION_HEADER = "Mcp-Session-Id";
 
 	private static final String MCP_PROTOCOL_VERSION_HEADER = "Mcp-Protocol-Version";
-	private static final String DEFAULT_MCP_PROTOCOL_VERSION = "2025-11-25";
+	private static final String DEFAULT_MCP_PROTOCOL_VERSION = "2024-11-05";
 	private static final long DEFAULT_STREAMING_SESSION_TTL_MS = TimeUnit.MINUTES.toMillis(30);
 	private static final long DEFAULT_CLEANUP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(10);
 	// Environment variable names
@@ -258,11 +259,18 @@ public class McpServlet extends HttpServlet {
 					String.format("Missing %s header", STREAMING_SESSION_HEADER));
 			return;
 		}
+		
+		// Session must have been created via initialize first
+		if (!lastAccess.containsKey(sessionId)) {
+			resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Invalid or expired session ID. Call initialize first.");
+			return;
+		}
 	    
 	    resp.setContentType(TEXT_EVENT_STREAM_CONTENT_TYPE);		
 		// If there is already an asynchronous connection, replace
-		AsyncContext existing = sessionId != null ? sessions.get(sessionId) : null;
+		AsyncContext existing = sessions.get(sessionId);
 		if (existing != null) {
+			log.info("MCP replacing existing SSE connection for session: " + sessionId);
 			try {
 				existing.complete();
 			} catch (Exception ignore) {
@@ -272,7 +280,6 @@ public class McpServlet extends HttpServlet {
 		AsyncContext asyncContext = req.startAsync();
 		asyncContext.setTimeout(0);
 		sessions.put(sessionId, asyncContext);
-		System.out.println("MCP Servlet doGet - opened async context for session: " + sessionId);
 		lastAccess.put(sessionId, System.currentTimeMillis());
 		setupListeners(asyncContext, sessionId);
 		// Echo session id
@@ -287,8 +294,7 @@ public class McpServlet extends HttpServlet {
 	    } catch (IOException e) {
 	        log.log(Level.WARNING, "Failed to write stream confirmation", e);
 	    }	    
-		if (log.isLoggable(Level.INFO))
-			log.info("MCP Streamable HTTP Asynchronous connection opened via GET. Session=" + sessionId);
+		log.info("MCP SSE stream opened for session: " + sessionId);
 	}
 
 	private void doGetStatus(HttpServletResponse resp) {
@@ -321,6 +327,7 @@ public class McpServlet extends HttpServlet {
 		asyncContext.addListener(new AsyncListener() {
 			@Override
 			public void onComplete(AsyncEvent event) {
+				log.info("MCP SSE session completed: " + sessionId);
 				sessions.remove(sessionId);
 				tokens.remove(sessionId);
 				lastAccess.remove(sessionId);
@@ -328,6 +335,7 @@ public class McpServlet extends HttpServlet {
 
 			@Override
 			public void onTimeout(AsyncEvent event) {
+				log.info("MCP SSE session timeout: " + sessionId);
 				sessions.remove(sessionId);
 				tokens.remove(sessionId);
 				lastAccess.remove(sessionId);
@@ -335,6 +343,7 @@ public class McpServlet extends HttpServlet {
 
 			@Override
 			public void onError(AsyncEvent event) {
+				log.warning("MCP SSE session error: " + sessionId + " - " + event.getThrowable());
 				sessions.remove(sessionId);
 				tokens.remove(sessionId);
 				lastAccess.remove(sessionId);
@@ -348,13 +357,15 @@ public class McpServlet extends HttpServlet {
 
 	private void setCommonResponseHeader(HttpServletResponse resp) {
 		resp.setCharacterEncoding("UTF-8");
-		resp.setHeader("Cache-Control", "no-cache");
+		resp.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 		resp.setHeader("Connection", "keep-alive");
 		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
 		// Expose headers so browser clients can read them
 		resp.setHeader("Access-Control-Expose-Headers",
 				STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER + ", Content-Type");
 		resp.setHeader(MCP_PROTOCOL_VERSION_HEADER, protocolVersion);
+		// Prevent buffering in proxies/reverse proxies
+		resp.setHeader("X-Accel-Buffering", "no");
 	}
 
 	private void sendStreamingEvent(AsyncContext ctx, String eventName, String data) {
@@ -362,14 +373,18 @@ public class McpServlet extends HttpServlet {
 			ServletResponse response = ctx.getResponse();
 			response.setContentType(TEXT_EVENT_STREAM_CONTENT_TYPE);
 			PrintWriter writer = response.getWriter();
-			synchronized (ctx) {
+			synchronized (writer) {
 				writer.write("event: " + eventName + "\n");
 				writer.write("data: " + data + "\n\n");
 				writer.flush();
 			}
+			if (log.isLoggable(Level.FINE))
+				log.fine("Sent SSE event: " + eventName);
 		} catch (IOException e) {
 			log.log(Level.WARNING, "Failed to send Streaming event", e);
-			ctx.complete();
+			try {
+				ctx.complete();
+			} catch (Exception ignore) {}
 			sessions.values().remove(ctx);
 		}
 	}
@@ -382,7 +397,10 @@ public class McpServlet extends HttpServlet {
 	 */
 	private void buildRestBaseURL(HttpServletRequest req) {
 		if (restBaseUrl.get() == null) {
-			String scheme = "https".equalsIgnoreCase(req.getScheme()) ? "https" : "http";
+			// Always use http for internal loopback calls to REST API.
+			// The incoming request may arrive via HTTPS (e.g. nginx reverse proxy),
+			// but the REST API listens on plain HTTP on localhost.
+			String scheme = "http";
             String host = "localhost";
             int port = req.getLocalPort();
 
@@ -455,17 +473,34 @@ public class McpServlet extends HttpServlet {
 	 * @param resp 
 	 */
 	private void processRequest(String sessionId, String jsonBody, HttpServletResponse resp) {
-		if (sessions.get(sessionId) != null) {
+		AsyncContext ctx = sessions.get(sessionId);
+		if (ctx != null) {
+			// Client has SSE stream open - process async and respond via SSE
+			log.info("MCP processRequest - using SSE for session: " + sessionId);
 			resp.setStatus(HttpServletResponse.SC_ACCEPTED);
+			try {
+				resp.flushBuffer();
+			} catch (IOException e) {
+				log.log(Level.WARNING, "Failed to flush 202 response", e);
+			}
 			requestExecutor.submit(() -> {
-				executeRequest(sessionId, jsonBody, resp, true);
+				try {
+					executeRequest(sessionId, jsonBody, resp, true);
+				} catch (Exception e) {
+					log.log(Level.SEVERE, "MCP async execution failed", e);
+				}
 			});
 		} else {
+			// No SSE stream - respond directly in POST response
+			log.info("MCP processRequest - direct response (no SSE) for session: " + sessionId);
 			executeRequest(sessionId, jsonBody, resp, false);
 		}
 	}
 
 	private void executeRequest(String sessionId, String jsonBody, HttpServletResponse resp, boolean isAsync) {
+		log.info("MCP executeRequest - sessionId=" + sessionId + ", isAsync=" + isAsync + ", body=" + 
+				(jsonBody.length() > 100 ? jsonBody.substring(0, 100) + "..." : jsonBody));
+		
 		// Execute via Service
 		IMcpService service = Service.locator().locate(IMcpService.class).getService();
 		String response = null;
@@ -473,12 +508,15 @@ public class McpServlet extends HttpServlet {
 			if (service != null) {
 				try {
 					String token = tokens.get(sessionId);
+					log.info("MCP calling service.processRequest...");
 					response = service.processRequest(jsonBody, token, sessionId);
+					log.info("MCP service returned response: " + (response != null ? response.substring(0, Math.min(200, response.length())) + "..." : "null"));
 				} catch (Exception e) {
 					log.log(Level.WARNING, "MCP Execution Failed", e);
 					response = createErrorJson(-32603, "Internal Error");
 				}
 			} else {
+				log.warning("MCP Service not found!");
 				response = createErrorJson(-32000, "OSGi Service Not Found");
 			}
 		} catch (Exception e) {
@@ -488,19 +526,40 @@ public class McpServlet extends HttpServlet {
 
 		// Send response back
 		if (response != null) {
-			AsyncContext ctx = sessions.get(sessionId);
-			if (ctx != null && isAsync) {
-				sendStreamingEvent(ctx, "message", response);
+			if (isAsync) {
+				// Was supposed to use SSE - check if context is still valid
+				AsyncContext ctx = sessions.get(sessionId);
+				if (ctx != null) {
+					log.info("MCP sending response via SSE stream");
+					sendStreamingEvent(ctx, "message", response);
+				} else {
+					// SSE context was closed during processing - log warning but can't send response
+					log.warning("MCP SSE context closed during async processing, cannot send response for session: " + sessionId);
+				}
 			} else {
-				// No asynchronous context established, respond directly
+				// No SSE stream - respond directly in HTTP response
+				log.info("MCP sending response directly in HTTP response");
 				try {
+					byte[] responseBytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 					resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
+					resp.setContentLength(responseBytes.length);
 					resp.setStatus(HttpServletResponse.SC_OK);
-					PrintWriter writer = resp.getWriter();
-					writer.write(response);
-					writer.flush();
+					resp.getOutputStream().write(responseBytes);
+					resp.getOutputStream().flush();
 				} catch (IOException e) {
-					log.log(Level.WARNING, "Failed to write session not found response", e);
+					log.log(Level.WARNING, "Failed to write response", e);
+				}
+			}
+		} else {
+			// Notifications don't require JSON-RPC response, but we still need to send HTTP response
+			// Return 202 Accepted to acknowledge the notification was received
+			if (!isAsync) {
+				log.info("MCP notification processed, sending 202 Accepted");
+				try {
+					resp.setStatus(HttpServletResponse.SC_ACCEPTED);
+					resp.flushBuffer();
+				} catch (IOException e) {
+					log.log(Level.WARNING, "Failed to send notification acknowledgment", e);
 				}
 			}
 		}
