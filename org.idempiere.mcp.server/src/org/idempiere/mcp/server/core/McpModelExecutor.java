@@ -179,7 +179,7 @@ public class McpModelExecutor {
             JsonElement response = client.get(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Print Record Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Print Record Error: " + e.getMessage());
         }
     }
 
@@ -203,9 +203,13 @@ public class McpModelExecutor {
             String path = "/models/" + URLEncoder.encode(model, StandardCharsets.UTF_8) + "/yaml";
             String yaml = client.getYaml(path, token);
             JsonObject item = new JsonObject();
-            item.addProperty("type", "text");
-            item.addProperty("mimeType", "application/yaml");
-            item.addProperty("text", yaml);
+            // Use EmbeddedResource for YAML content since TextContent doesn't support mimeType
+            item.addProperty("type", "resource");
+            JsonObject resource = new JsonObject();
+            resource.addProperty("uri", "idempiere://models/" + model + "/yaml");
+            resource.addProperty("mimeType", "application/yaml");
+            resource.addProperty("text", yaml);
+            item.add("resource", resource);
             JsonArray content = new JsonArray();
             content.add(item);
             JsonObject result = new JsonObject();

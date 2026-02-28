@@ -133,7 +133,7 @@ public class McpProcessExecutor {
             JsonElement response = client.delete(path, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         } catch (Exception e) {
-            return McpServiceImpl.createError(id, -32000, "Delete Scheduler Job Error: " + e.getMessage());
+            return McpExecutorUtils.wrapToolError(id, "Delete Scheduler Job Error: " + e.getMessage());
         }
     }
 }
