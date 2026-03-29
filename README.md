@@ -12,7 +12,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 
 # Testing
 - Create a new Rest Auth Token record. Copy the auto generated Token.
-- The Rest Auth Token  is now optional, you can use the newly added create_auth_token tool instead.
+- The Rest Auth Token is now optional, you can use the newly added create_auth_token tool instead.
 
 # Testing with https://github.com/modelcontextprotocol/inspector
 - npx @modelcontextprotocol/inspector
@@ -61,9 +61,15 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
 ```
 - With multiple token, you can only use one at a time and use "excluded" to disable the other. You need to restart Gemini CLI after changing the "excluded" value in settings.json file.
 - Install https://github.com/castle-studio-work/geminicli-manage-addon for a command line tool to manage multiple MCP Server instance for Gemini CLI
-- Without Authentication Token: remove the "header" property above. Authenticate with the create_auth_token tool instead.
+- Authentication with the create_auth_token tool:
+   - Remove the "headers" property
    - Example: authenticate idempiere with GardenAdmin, GardenAdmin, clientId:GardenWorld, organizationId:HQ, roleId:GardenWorld Admin, warehouseId:HQ Warehouse
    - Note that out of the box, you can't authenticate with SuperUser,System, clientId:0, roleId:0 due to the role type of the System Administrator role. You need to change the role type value of System Administrator role to empty or create a new System tenant role for REST API with role type = Web Service.
+- Use set_auth_token tool:
+  - Remove the "headers" property
+  - Use the token created using `REST Auth Token` or acquire an access token using curl calling the REST Authentication API.
+  - Export the token as environment variable or use it directly.
+  - Example: export the token as $TOKEN and use it with the prompt `idempiere set token from environment variable TOKEN`
 - Note that the trailing "/" in the URL is significant, "http://localhost:8080/mcp/" work but "http://localhost:8080/mcp" doesn't. For some reason, the servlet container will redirect (HTTP 301) "/mcp" to "/mcp/" and that breaks the initialization flow.
 
 # Demo Video
