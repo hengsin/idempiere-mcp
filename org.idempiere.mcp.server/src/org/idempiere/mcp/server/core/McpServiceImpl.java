@@ -718,6 +718,9 @@ public class McpServiceImpl implements IMcpService {
                                                 "Warehouse identifier, e.g., 103 or HQ Warehouse, search from M_Warehouse." },
                                 new String[] { "language", "string",
                                                 "Language code, e.g., en_US, search from AD_Language." }));
+                tools.add(createTool("idempiere_auth_set_token", "Set JWT authorization token (bearer token) for subsequent rest api call.",
+                                new String[] { "token" },
+                                new String[] { "token", "string", "JWT bearer token." }));
                 tools.add(createTool("idempiere_auth_logout", "Logout.",
                                 new String[] {},
                                 new String[] {}));
@@ -968,6 +971,8 @@ public class McpServiceImpl implements IMcpService {
                 toolHandlers.put("idempiere_auth_update_token",
                                 (id, args, token, sessionId) -> McpAuthExecutor.update(id, args, token, sessionId,
                                                 restClient));
+                toolHandlers.put("idempiere_auth_set_token",
+                                (id, args, token, sessionId) -> McpAuthExecutor.setToken(id, args, token, sessionId));
                 toolHandlers.put("idempiere_auth_logout",
                                 (id, args, token, sessionId) -> McpAuthExecutor.logout(id, args, token, sessionId,
                                                 restClient));

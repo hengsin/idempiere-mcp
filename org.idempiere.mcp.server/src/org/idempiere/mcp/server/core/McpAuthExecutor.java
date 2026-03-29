@@ -109,6 +109,27 @@ public class McpAuthExecutor {
     }
 
     /**
+     * Set JWT authorization token (bearer token)
+     * 
+     * @param id
+     * @param args
+     * @param token
+     * @param sessionId
+     * @return MCP success/error response
+     */
+    public static String setToken(String id, JsonObject args, String token, String sessionId) {
+        return McpExecutorUtils.execute(id, "idempiere_auth_set_token", () -> {
+            String newToken = args.get("token").getAsString();
+            if (sessionId != null) {
+                McpServlet.updateToken(sessionId, newToken);
+            }
+            JsonObject response = new JsonObject();
+            response.addProperty("token", newToken);
+            return McpExecutorUtils.wrapJsonContent(id, response);
+        });
+    }
+
+    /**
      * Logout (POST /auth/logout)
      * 
      * @param id
