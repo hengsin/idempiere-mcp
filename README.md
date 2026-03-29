@@ -65,7 +65,7 @@ This project implements a [Model Context Protocol (MCP)](https://modelcontextpro
    - Remove the "headers" property
    - Example: authenticate idempiere with GardenAdmin, GardenAdmin, clientId:GardenWorld, organizationId:HQ, roleId:GardenWorld Admin, warehouseId:HQ Warehouse
    - Note that out of the box, you can't authenticate with SuperUser,System, clientId:0, roleId:0 due to the role type of the System Administrator role. You need to change the role type value of System Administrator role to empty or create a new System tenant role for REST API with role type = Web Service.
-- Use set_auth_token tool:
+- Authenticate with set_auth_token tool:
   - Remove the "headers" property
   - Use the token created using `REST Auth Token` or acquire an access token using curl calling the REST Authentication API.
   - Export the token as environment variable or use it directly.
