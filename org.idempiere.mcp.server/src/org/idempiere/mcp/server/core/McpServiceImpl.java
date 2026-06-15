@@ -395,7 +395,8 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "data", "object", "JSON Object of fields"
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
                                                 + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)."
-                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." }));
+                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
                 tools.add(createTool("idempiere_window_get_record", "Get record by id.",
                                 new String[] { "window_name", "record_id" },
                                 new String[] { "window_name", "string", "window name (ad_window.name)."
@@ -426,7 +427,8 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "data", "object", "JSON Object of fields."
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
                                                 + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)."
-                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." }));
+                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
                 tools.add(createTool("idempiere_window_delete_tab_record", "Delete tab record by id."
                                 + "**Important Note**: Ask user for confirmation before deleting unless user explicitly ask for no confirmation. "
                                 + "**Ask User for confirmation**: When asking user for confirmation, show a table with field names and values.",
@@ -453,7 +455,8 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "record_id", "string", "record id" },
                                 new String[] { "child_tab_name", "string", "child tab name (ad_tab.name)." },
                                 new String[] { "data", "object", "JSON Object of fields."
-                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." }));
+                                                + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
 
                 // Views Tools
                 tools.add(createTool("idempiere_view_list_views", "List available views.", new String[] {},

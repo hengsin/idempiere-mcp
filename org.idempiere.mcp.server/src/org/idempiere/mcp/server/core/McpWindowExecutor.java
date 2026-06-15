@@ -89,7 +89,8 @@ public class McpWindowExecutor {
         return McpExecutorUtils.execute(id, "Create Window Record", () -> {
             String windowSlug = McpExecutorUtils.slugify(args.get("window_name").getAsString());
             JsonObject data = args.get("data").getAsJsonObject();
-            String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8);
+            boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
+            String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "?$save=" + save;
             JsonElement response = client.post(path, data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
@@ -138,8 +139,9 @@ public class McpWindowExecutor {
             String tabSlug = McpExecutorUtils.slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             JsonObject data = args.get("data").getAsJsonObject();
+            boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/"
-                    + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId;
+                    + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "?$save=" + save;
             JsonElement response = client.put(path, data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
@@ -178,9 +180,10 @@ public class McpWindowExecutor {
             String recordId = args.get("record_id").getAsString();
             String childTabSlug = McpExecutorUtils.slugify(args.get("child_tab_name").getAsString());
             JsonObject data = args.get("data").getAsJsonObject();
+            boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/"
                     + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "/"
-                    + URLEncoder.encode(childTabSlug, StandardCharsets.UTF_8);
+                    + URLEncoder.encode(childTabSlug, StandardCharsets.UTF_8) + "?$save=" + save;
             JsonElement response = client.post(path, data, token);
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
