@@ -52,12 +52,16 @@ public class McpAuthExecutor {
 
             JsonElement response = client.post("/auth/tokens", body, token);
             String newToken = null;
+            String newRefreshToken = null;
             if (response != null && response.isJsonObject()) {
                 JsonObject obj = response.getAsJsonObject();
                 if (obj.has("token")) {
                     newToken = obj.get("token").getAsString();
+                    if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
+                        newRefreshToken = obj.get("refresh_token").getAsString();
+                    }
                     if (sessionId != null) {
-                        McpServlet.updateToken(sessionId, newToken);
+                        McpServlet.updateToken(sessionId, newToken, newRefreshToken);
                     }
                 }
             }
@@ -95,12 +99,16 @@ public class McpAuthExecutor {
 
             JsonElement response = client.put("/auth/tokens", body, token);
             String newToken = null;
+            String newRefreshToken = null;
             if (response != null && response.isJsonObject()) {
                 JsonObject obj = response.getAsJsonObject();
                 if (obj.has("token")) {
                     newToken = obj.get("token").getAsString();
+                    if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
+                        newRefreshToken = obj.get("refresh_token").getAsString();
+                    }
                     if (sessionId != null) {
-                        McpServlet.updateToken(sessionId, newToken);
+                        McpServlet.updateToken(sessionId, newToken, newRefreshToken);
                     }
                 }
             }
@@ -120,11 +128,15 @@ public class McpAuthExecutor {
     public static String setToken(String id, JsonObject args, String token, String sessionId) {
         return McpExecutorUtils.execute(id, "idempiere_auth_set_token", () -> {
             String newToken = args.get("token").getAsString();
+            String refreshToken = args.has("refresh_token") && !args.get("refresh_token").isJsonNull() ? args.get("refresh_token").getAsString() : null;
             if (sessionId != null) {
-                McpServlet.updateToken(sessionId, newToken);
+                McpServlet.updateToken(sessionId, newToken, refreshToken);
             }
             JsonObject response = new JsonObject();
             response.addProperty("token", newToken);
+            if (refreshToken != null) {
+                response.addProperty("refresh_token", refreshToken);
+            }
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

@@ -27,6 +27,7 @@ package org.idempiere.mcp.server.core;
 
 import org.idempiere.mcp.server.api.IMcpService;
 import org.idempiere.mcp.server.client.RestApiClient;
+import org.idempiere.mcp.server.web.McpServlet;
 import org.osgi.service.component.annotations.Component;
 
 import java.util.logging.Level;
@@ -47,53 +48,58 @@ public class McpServiceImpl implements IMcpService {
 
         @Override
         public String processRequest(String jsonRequest, String authToken, String sessionId) {
-                JsonElement requestIdElement = null;
-                String requestId = null;
+                McpServlet.setCurrentSessionId(sessionId);
                 try {
-                        JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
-                        if (req.has("id") && !req.get("id").isJsonNull()) {
-                                requestIdElement = req.get("id");
-                                requestId = requestIdElement.getAsString();
+                        JsonElement requestIdElement = null;
+                        String requestId = null;
+                        try {
+                                JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
+                                if (req.has("id") && !req.get("id").isJsonNull()) {
+                                        requestIdElement = req.get("id");
+                                        requestId = requestIdElement.getAsString();
+                                }
+
+                                String method = req.get("method").getAsString();
+                                if (log.isLoggable(Level.INFO))
+                                        log.info("MCP Request: " + method);
+
+                                JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
+
+                                String response;
+                                switch (method) {
+                                        case "initialize":
+                                                response = handleInitialize(requestId);
+                                                break;
+                                        case "notifications/initialized":
+                                                return null; // No response needed for notification
+                                        case "notifications/cancelled":
+                                                return null; // No response needed for notification
+                                        case "ping":
+                                                response = createSuccess(requestId, new JsonObject());
+                                                break;
+                                        case "tools/list":
+                                                response = handleListTools(requestId);
+                                                break;
+                                        case "tools/call":
+                                                response = handleToolCall(requestId, params, authToken, sessionId);
+                                                break;
+                                        case "resources/list":
+                                                response = handleListResources(requestId);
+                                                break;
+                                        case "resources/read":
+                                                response = handleReadResource(requestId, params, authToken, sessionId);
+                                                break;
+                                        default:
+                                                response = createError(requestId, -32601, "Method not found: " + method);
+                                                break;
+                                }
+                                return normalizeResponseId(response, requestIdElement);
+                        } catch (Exception e) {
+                                log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
+                                return normalizeResponseId(createError(requestId, -32603, "Internal Error: " + e.getMessage()), requestIdElement);
                         }
-
-                        String method = req.get("method").getAsString();
-                        if (log.isLoggable(Level.INFO))
-                                log.info("MCP Request: " + method);
-
-                        JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
-
-                        String response;
-                        switch (method) {
-                                case "initialize":
-                                        response = handleInitialize(requestId);
-                                        break;
-                                case "notifications/initialized":
-                                        return null; // No response needed for notification
-                                case "notifications/cancelled":
-                                        return null; // No response needed for notification
-                                case "ping":
-                                        response = createSuccess(requestId, new JsonObject());
-                                        break;
-                                case "tools/list":
-                                        response = handleListTools(requestId);
-                                        break;
-                                case "tools/call":
-                                        response = handleToolCall(requestId, params, authToken, sessionId);
-                                        break;
-                                case "resources/list":
-                                        response = handleListResources(requestId);
-                                        break;
-                                case "resources/read":
-                                        response = handleReadResource(requestId, params, authToken, sessionId);
-                                        break;
-                                default:
-                                        response = createError(requestId, -32601, "Method not found: " + method);
-                                        break;
-                        }
-                        return normalizeResponseId(response, requestIdElement);
-                } catch (Exception e) {
-                        log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
-                        return normalizeResponseId(createError(requestId, -32603, "Internal Error: " + e.getMessage()), requestIdElement);
+                } finally {
+                        McpServlet.clearCurrentSessionId();
                 }
         }
 
@@ -723,7 +729,8 @@ public class McpServiceImpl implements IMcpService {
                                                 "Language code, e.g., en_US, search from AD_Language." }));
                 tools.add(createTool("idempiere_auth_set_token", "Set JWT authorization token (bearer token) for subsequent rest api call.",
                                 new String[] { "token" },
-                                new String[] { "token", "string", "JWT bearer token." }));
+                                new String[] { "token", "string", "JWT bearer token." },
+                                new String[] { "refresh_token", "string", "Refresh token (optional)." }));
                 tools.add(createTool("idempiere_auth_logout", "Logout.",
                                 new String[] {},
                                 new String[] {}));

@@ -27,6 +27,8 @@ package org.idempiere.mcp.server.web;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,10 +101,71 @@ public class McpServlet extends HttpServlet {
 
 	// Store active SSE sessions: SessionID -> AsyncContext
 	private static final Map<String, AsyncContext> sessions = new ConcurrentHashMap<>();
-	// Store active sessions: SessionID -> AuthToken
-	private static final Map<String, String> tokens = new ConcurrentHashMap<>();
+	// Store active sessions: SessionID -> TokenInfo (token + refresh token + cached JWT claims)
+	private static final Map<String, TokenInfo> tokenInfos = new ConcurrentHashMap<>();
+	// Track current sessionId in thread local
+	private static final ThreadLocal<String> currentSessionId = new ThreadLocal<>();
 	// Track last access for sessions
 	private static final Map<String, Long> lastAccess = new ConcurrentHashMap<>();
+
+	/**
+	 * Holds token, refresh token, and cached JWT claims for a session.
+	 */
+	public static class TokenInfo {
+		private final String token;
+		private final String refreshToken;
+		/** JWT exp claim in seconds since epoch */
+		private final long expSeconds;
+		private final Integer clientId;
+		private final Integer userId;
+
+		public TokenInfo(String token, String refreshToken) {
+			this.token = token;
+			this.refreshToken = refreshToken;
+			// Parse and cache JWT claims once
+			long parsedExp = 0;
+			Integer parsedClientId = null;
+			Integer parsedUserId = null;
+			if (token != null) {
+				try {
+					String[] parts = token.split("\\.");
+					if (parts.length >= 2) {
+						String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+						JsonObject json = JsonParser.parseString(payload).getAsJsonObject();
+						if (json.has("exp")) {
+							parsedExp = json.get("exp").getAsLong();
+						}
+						if (json.has("clientId") && !json.get("clientId").isJsonNull()) {
+							parsedClientId = json.get("clientId").getAsInt();
+						}
+						if (json.has("userId") && !json.get("userId").isJsonNull()) {
+							parsedUserId = json.get("userId").getAsInt();
+						}
+					}
+				} catch (Exception e) {
+					// ignore parse errors, keep defaults
+				}
+			}
+			this.expSeconds = parsedExp;
+			this.clientId = parsedClientId;
+			this.userId = parsedUserId;
+		}
+
+		public String getToken() { return token; }
+		public String getRefreshToken() { return refreshToken; }
+		public long getExpSeconds() { return expSeconds; }
+		public Integer getClientId() { return clientId; }
+		public Integer getUserId() { return userId; }
+
+		/**
+		 * Check if the token is expired (with a 10-second buffer)
+		 * @return true if the token is expired
+		 */
+		public boolean isExpired() {
+			if (expSeconds <= 0) return false;
+			return (expSeconds * 1000L) - 10000L < System.currentTimeMillis();
+		}
+	}
 
 	private ScheduledExecutorService cleanupScheduler;
 	private static long cleanedSessionsCount = 0; // metrics: total expired sessions cleaned
@@ -199,7 +262,7 @@ public class McpServlet extends HttpServlet {
 			long last = e.getValue();
 			if (now - last > streamingSessionTtlMs) {
 				// remove streaming token
-				tokens.remove(sessionId);
+				tokenInfos.remove(sessionId);
 				// close SSE async context if present
 				AsyncContext ctx = sessions.remove(sessionId);
 				if (ctx != null) {
@@ -216,18 +279,65 @@ public class McpServlet extends HttpServlet {
 		}
 	}
 
+	public static void setCurrentSessionId(String sessionId) {
+		currentSessionId.set(sessionId);
+	}
+
+	public static String getCurrentSessionId() {
+		return currentSessionId.get();
+	}
+
+	public static void clearCurrentSessionId() {
+		currentSessionId.remove();
+	}
+
+	public static String getToken(String sessionId) {
+		if (sessionId == null) return null;
+		TokenInfo info = tokenInfos.get(sessionId);
+		return info != null ? info.getToken() : null;
+	}
+
+	public static String getRefreshToken(String sessionId) {
+		if (sessionId == null) return null;
+		TokenInfo info = tokenInfos.get(sessionId);
+		return info != null ? info.getRefreshToken() : null;
+	}
+
 	/**
-	 * Update or remove token for a session
+	 * Get the TokenInfo for a session
+	 * @param sessionId
+	 * @return TokenInfo or null
+	 */
+	public static TokenInfo getTokenInfo(String sessionId) {
+		return sessionId != null ? tokenInfos.get(sessionId) : null;
+	}
+
+	/**
+	 * Update or remove token and refresh token for a session.
+	 * JWT claims (exp, clientId, userId) are parsed and cached at this time.
+	 * 
+	 * @param sessionId
+	 * @param token
+	 * @param refreshToken
+	 */
+	public static void updateToken(String sessionId, String token, String refreshToken) {
+		if (!Util.isEmpty(sessionId, true)) {
+			if (!Util.isEmpty(token, true)) {
+				tokenInfos.put(sessionId, new TokenInfo(token, refreshToken));
+			} else {
+				tokenInfos.remove(sessionId);
+			}
+		}
+	}
+
+	/**
+	 * Update or remove token for a session (legacy compatibility)
 	 * 
 	 * @param sessionId
 	 * @param token     null or empty string to remove existing token of a session
 	 */
 	public static void updateToken(String sessionId, String token) {
-		if (!Util.isEmpty(sessionId, true) && !Util.isEmpty(token, true)) {
-			tokens.put(sessionId, token);
-		} else if (tokens.containsKey(sessionId)) {
-			tokens.remove(sessionId);
-		}
+		updateToken(sessionId, token, null);
 	}
 
 	private String extractToken(HttpServletRequest req) {
@@ -328,7 +438,7 @@ public class McpServlet extends HttpServlet {
 			public void onComplete(AsyncEvent event) {
 				log.info("MCP SSE session completed: " + sessionId);
 				sessions.remove(sessionId);
-				tokens.remove(sessionId);
+				tokenInfos.remove(sessionId);
 				lastAccess.remove(sessionId);
 			}
 
@@ -336,7 +446,7 @@ public class McpServlet extends HttpServlet {
 			public void onTimeout(AsyncEvent event) {
 				log.info("MCP SSE session timeout: " + sessionId);
 				sessions.remove(sessionId);
-				tokens.remove(sessionId);
+				tokenInfos.remove(sessionId);
 				lastAccess.remove(sessionId);
 			}
 
@@ -344,7 +454,7 @@ public class McpServlet extends HttpServlet {
 			public void onError(AsyncEvent event) {
 				log.warning("MCP SSE session error: " + sessionId + " - " + event.getThrowable());
 				sessions.remove(sessionId);
-				tokens.remove(sessionId);
+				tokenInfos.remove(sessionId);
 				lastAccess.remove(sessionId);
 			}
 
@@ -436,7 +546,7 @@ public class McpServlet extends HttpServlet {
 			sessionId = UUID.randomUUID().toString();
 			String token = extractToken(req);
 			if (token != null)
-				tokens.put(sessionId, token);
+				tokenInfos.put(sessionId, new TokenInfo(token, null));
 			lastAccess.put(sessionId, System.currentTimeMillis());								
 		} else {			
 			if (Util.isEmpty(sessionId, true)) {
@@ -506,7 +616,8 @@ public class McpServlet extends HttpServlet {
 		try {
 			if (service != null) {
 				try {
-					String token = tokens.get(sessionId);
+					TokenInfo info = tokenInfos.get(sessionId);
+					String token = info != null ? info.getToken() : null;
 					log.info("MCP calling service.processRequest...");
 					response = service.processRequest(jsonBody, token, sessionId);
 					log.info("MCP service returned response: " + (response != null ? response.substring(0, Math.min(200, response.length())) + "..." : "null"));
@@ -614,7 +725,7 @@ public class McpServlet extends HttpServlet {
 			} catch (Exception ignore) {
 			}
 		}
-		tokens.remove(sessionId);
+		tokenInfos.remove(sessionId);
 		lastAccess.remove(sessionId);
 		resp.setStatus(HttpServletResponse.SC_OK);
 		resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
