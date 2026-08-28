@@ -67,16 +67,11 @@ public class McpServiceImpl implements IMcpService {
 
                                 String response;
                                 switch (method) {
-                                        case "initialize":
-                                                response = handleInitialize(requestId);
+                                        case "server/discover":
+                                                response = handleServerDiscover(requestId);
                                                 break;
-                                        case "notifications/initialized":
-                                                return null; // No response needed for notification
                                         case "notifications/cancelled":
                                                 return null; // No response needed for notification
-                                        case "ping":
-                                                response = createSuccess(requestId, new JsonObject());
-                                                break;
                                         case "tools/list":
                                                 response = handleListTools(requestId);
                                                 break;
@@ -116,7 +111,7 @@ public class McpServiceImpl implements IMcpService {
                 }
         }
 
-        private String handleInitialize(String id) {
+        private String handleServerDiscover(String id) {
                 JsonObject capabilities = new JsonObject();
 
                 // Declare support for Tools and Resources
@@ -133,9 +128,16 @@ public class McpServiceImpl implements IMcpService {
                 serverInfo.addProperty("version", "1.0.0");
 
                 JsonObject result = new JsonObject();
-                result.addProperty("protocolVersion", "2024-11-05");
+                result.addProperty("protocolVersion", "2026-07-28");
+                JsonArray supportedVersions = new JsonArray();
+                supportedVersions.add("2026-07-28");
+                result.add("supportedProtocolVersions", supportedVersions);
                 result.add("capabilities", capabilities);
                 result.add("serverInfo", serverInfo);
+
+                JsonObject meta = new JsonObject();
+                meta.add("io.modelcontextprotocol/serverInfo", serverInfo);
+                result.add("_meta", meta);
 
                 return createSuccess(id, result);
         }
@@ -735,8 +737,16 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] {},
                                 new String[] {}));
 
+                java.util.List<JsonElement> list = new java.util.ArrayList<>();
+                tools.forEach(list::add);
+                list.sort(java.util.Comparator.comparing(e -> e.getAsJsonObject().get("name").getAsString()));
+                JsonArray sortedTools = new JsonArray();
+                list.forEach(sortedTools::add);
+
                 JsonObject res = new JsonObject();
-                res.add("tools", tools);
+                res.add("tools", sortedTools);
+                res.addProperty("ttlMs", 3600000L);
+                res.addProperty("cacheScope", "public");
                 return createSuccess(id, res);
         }
 
@@ -1085,6 +1095,8 @@ public class McpServiceImpl implements IMcpService {
 
                 JsonObject r = new JsonObject();
                 r.add("resources", res);
+                r.addProperty("ttlMs", 3600000L);
+                r.addProperty("cacheScope", "public");
                 return createSuccess(id, r);
         }
 
@@ -1132,6 +1144,9 @@ public class McpServiceImpl implements IMcpService {
                 JsonObject o = new JsonObject();
                 o.addProperty("jsonrpc", "2.0");
                 o.addProperty("id", id);
+                if (res != null && !res.has("resultType")) {
+                        res.addProperty("resultType", "complete");
+                }
                 o.add("result", res);
                 return o.toString();
         }
