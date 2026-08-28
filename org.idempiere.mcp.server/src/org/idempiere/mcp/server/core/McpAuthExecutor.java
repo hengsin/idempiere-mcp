@@ -26,7 +26,6 @@
 package org.idempiere.mcp.server.core;
 
 import org.idempiere.mcp.server.client.RestApiClient;
-import org.idempiere.mcp.server.web.McpServlet;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -41,7 +40,7 @@ public class McpAuthExecutor {
      * @param client
      * @return MCP success/error response
      */
-    public static String create(String id, JsonObject args, String token, String sessionId, RestApiClient client) {
+    public static String create(String id, JsonObject args, String token, RestApiClient client) {
         return McpExecutorUtils.execute(id, "Create Auth Token", () -> {
             JsonObject body = new JsonObject();
             body.addProperty("userName", args.get("userName").getAsString());
@@ -60,9 +59,6 @@ public class McpAuthExecutor {
                     if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
                         newRefreshToken = obj.get("refresh_token").getAsString();
                     }
-                    if (sessionId != null) {
-                        McpServlet.updateToken(sessionId, newToken, newRefreshToken);
-                    }
                 }
             }
             return McpExecutorUtils.wrapJsonContent(id, response);
@@ -78,7 +74,7 @@ public class McpAuthExecutor {
      * @param client
      * @return MCP success/error response
      */
-    public static String update(String id, JsonObject args, String token, String sessionId, RestApiClient client) {
+    public static String update(String id, JsonObject args, String token, RestApiClient client) {
         return McpExecutorUtils.execute(id, "Update Auth Token", () -> {
             JsonObject body = new JsonObject();
             if (args.has("clientId") && !args.get("clientId").isJsonNull()) {
@@ -107,35 +103,7 @@ public class McpAuthExecutor {
                     if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
                         newRefreshToken = obj.get("refresh_token").getAsString();
                     }
-                    if (sessionId != null) {
-                        McpServlet.updateToken(sessionId, newToken, newRefreshToken);
-                    }
                 }
-            }
-            return McpExecutorUtils.wrapJsonContent(id, response);
-        });
-    }
-
-    /**
-     * Set JWT authorization token (bearer token)
-     * 
-     * @param id
-     * @param args
-     * @param token
-     * @param sessionId
-     * @return MCP success/error response
-     */
-    public static String setToken(String id, JsonObject args, String token, String sessionId) {
-        return McpExecutorUtils.execute(id, "idempiere_auth_set_token", () -> {
-            String newToken = args.get("token").getAsString();
-            String refreshToken = args.has("refresh_token") && !args.get("refresh_token").isJsonNull() ? args.get("refresh_token").getAsString() : null;
-            if (sessionId != null) {
-                McpServlet.updateToken(sessionId, newToken, refreshToken);
-            }
-            JsonObject response = new JsonObject();
-            response.addProperty("token", newToken);
-            if (refreshToken != null) {
-                response.addProperty("refresh_token", refreshToken);
             }
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
@@ -150,14 +118,12 @@ public class McpAuthExecutor {
      * @param client
      * @return MCP success/error response
      */
-    public static String logout(String id, JsonObject args, String token, String sessionId, RestApiClient client) {
+    public static String logout(String id, JsonObject args, String token, RestApiClient client) {
         return McpExecutorUtils.execute(id, "idempiere_auth_logout", () -> {
             JsonObject body = new JsonObject();
             body.addProperty("token", token);
 
             JsonElement response = client.post("/auth/logout", body, null);
-            McpServlet.updateToken(sessionId, null);
-
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

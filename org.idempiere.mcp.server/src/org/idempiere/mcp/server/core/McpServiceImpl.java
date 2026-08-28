@@ -47,54 +47,49 @@ public class McpServiceImpl implements IMcpService {
         private final RestApiClient restClient = new RestApiClient();
 
         @Override
-        public String processRequest(String jsonRequest, String authToken, String sessionId) {
-                McpServlet.setCurrentSessionId(sessionId);
+        public String processRequest(String jsonRequest, String authToken) {
+                JsonElement requestIdElement = null;
+                String requestId = null;
                 try {
-                        JsonElement requestIdElement = null;
-                        String requestId = null;
-                        try {
-                                JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
-                                if (req.has("id") && !req.get("id").isJsonNull()) {
-                                        requestIdElement = req.get("id");
-                                        requestId = requestIdElement.getAsString();
-                                }
-
-                                String method = req.get("method").getAsString();
-                                if (log.isLoggable(Level.INFO))
-                                        log.info("MCP Request: " + method);
-
-                                JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
-
-                                String response;
-                                switch (method) {
-                                        case "server/discover":
-                                                response = handleServerDiscover(requestId);
-                                                break;
-                                        case "notifications/cancelled":
-                                                return null; // No response needed for notification
-                                        case "tools/list":
-                                                response = handleListTools(requestId);
-                                                break;
-                                        case "tools/call":
-                                                response = handleToolCall(requestId, params, authToken, sessionId);
-                                                break;
-                                        case "resources/list":
-                                                response = handleListResources(requestId);
-                                                break;
-                                        case "resources/read":
-                                                response = handleReadResource(requestId, params, authToken, sessionId);
-                                                break;
-                                        default:
-                                                response = createError(requestId, -32601, "Method not found: " + method);
-                                                break;
-                                }
-                                return normalizeResponseId(response, requestIdElement);
-                        } catch (Exception e) {
-                                log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
-                                return normalizeResponseId(createError(requestId, -32603, "Internal Error: " + e.getMessage()), requestIdElement);
+                        JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
+                        if (req.has("id") && !req.get("id").isJsonNull()) {
+                                requestIdElement = req.get("id");
+                                requestId = requestIdElement.getAsString();
                         }
-                } finally {
-                        McpServlet.clearCurrentSessionId();
+
+                        String method = req.get("method").getAsString();
+                        if (log.isLoggable(Level.INFO))
+                                log.info("MCP Request: " + method);
+
+                        JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
+
+                        String response;
+                        switch (method) {
+                                case "server/discover":
+                                        response = handleServerDiscover(requestId);
+                                        break;
+                                case "notifications/cancelled":
+                                        return null; // No response needed for notification
+                                case "tools/list":
+                                        response = handleListTools(requestId);
+                                        break;
+                                case "tools/call":
+                                        response = handleToolCall(requestId, params, authToken);
+                                        break;
+                                case "resources/list":
+                                        response = handleListResources(requestId);
+                                        break;
+                                case "resources/read":
+                                        response = handleReadResource(requestId, params, authToken);
+                                        break;
+                                default:
+                                        response = createError(requestId, -32601, "Method not found: " + method);
+                                        break;
+                        }
+                        return normalizeResponseId(response, requestIdElement);
+                } catch (Exception e) {
+                        log.log(Level.SEVERE, "Error processing MCP request: " + e.getLocalizedMessage(), e);
+                        return normalizeResponseId(createError(requestId, -32603, "Internal Error: " + e.getMessage()), requestIdElement);
                 }
         }
 
@@ -729,10 +724,6 @@ public class McpServiceImpl implements IMcpService {
                                                 "Warehouse identifier, e.g., 103 or HQ Warehouse, search from M_Warehouse." },
                                 new String[] { "language", "string",
                                                 "Language code, e.g., en_US, search from AD_Language." }));
-                tools.add(createTool("idempiere_auth_set_token", "Set JWT authorization token (bearer token) for subsequent rest api call.",
-                                new String[] { "token" },
-                                new String[] { "token", "string", "JWT bearer token." },
-                                new String[] { "refresh_token", "string", "Refresh token (optional)." }));
                 tools.add(createTool("idempiere_auth_logout", "Logout.",
                                 new String[] {},
                                 new String[] {}));
@@ -759,330 +750,328 @@ public class McpServiceImpl implements IMcpService {
         private void registerTools() {
                 // Models
                 toolHandlers.put("idempiere_model_search_records",
-                                (id, args, token, sessionId) -> McpModelExecutor.search(id, args, token, restClient));
+                                (id, args, token) -> McpModelExecutor.search(id, args, token, restClient));
                 toolHandlers.put("idempiere_model_get_record",
-                                (id, args, token, sessionId) -> McpModelExecutor.get(id, args, token, restClient));
+                                (id, args, token) -> McpModelExecutor.get(id, args, token, restClient));
                 toolHandlers.put("idempiere_model_create_record",
-                                (id, args, token, sessionId) -> McpModelExecutor.create(id, args, token, restClient));
+                                (id, args, token) -> McpModelExecutor.create(id, args, token, restClient));
                 toolHandlers.put("idempiere_model_update_record",
-                                (id, args, token, sessionId) -> McpModelExecutor.update(id, args, token, restClient));
+                                (id, args, token) -> McpModelExecutor.update(id, args, token, restClient));
                 toolHandlers.put("idempiere_model_delete_record",
-                                (id, args, token, sessionId) -> McpModelExecutor.delete_record(id, args, token,
+                                (id, args, token) -> McpModelExecutor.delete_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_get_record_property",
-                                (id, args, token, sessionId) -> McpModelExecutor.get_record_property(id, args, token,
+                                (id, args, token) -> McpModelExecutor.get_record_property(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_get_record_attachments",
-                                (id, args, token, sessionId) -> McpModelExecutor.get_record_attachments(id, args, token,
+                                (id, args, token) -> McpModelExecutor.get_record_attachments(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_add_record_attachment",
-                                (id, args, token, sessionId) -> McpModelExecutor.add_record_attachment(id, args, token,
+                                (id, args, token) -> McpModelExecutor.add_record_attachment(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_delete_record_attachment",
-                                (id, args, token, sessionId) -> McpModelExecutor.delete_record_attachments(id, args,
+                                (id, args, token) -> McpModelExecutor.delete_record_attachments(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_get_record_attachments_zip",
-                                (id, args, token, sessionId) -> McpModelExecutor.get_record_attachments_zip(id, args,
+                                (id, args, token) -> McpModelExecutor.get_record_attachments_zip(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_get_record_attachment_by_name",
-                                (id, args, token, sessionId) -> McpModelExecutor.get_record_attachment_by_name(id, args,
+                                (id, args, token) -> McpModelExecutor.get_record_attachment_by_name(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_print_record",
-                                (id, args, token, sessionId) -> McpModelExecutor.print_record(id, args, token,
+                                (id, args, token) -> McpModelExecutor.print_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_list_models",
-                                (id, args, token, sessionId) -> McpModelExecutor.listModelsTool(id, args, token,
+                                (id, args, token) -> McpModelExecutor.listModelsTool(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_model_get_yaml",
-                                (id, args, token, sessionId) -> McpModelExecutor.getModelYamlTool(id, args, token,
+                                (id, args, token) -> McpModelExecutor.getModelYamlTool(id, args, token,
                                                 restClient));
 
                 // Processes
                 toolHandlers.put("idempiere_process_get_info",
-                                (id, args, token, sessionId) -> McpProcessExecutor.getProcessInfoTool(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.getProcessInfoTool(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_process_run",
-                                (id, args, token, sessionId) -> McpProcessExecutor.runProcess(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.runProcess(id, args, token,
                                                 restClient));
 
                 // Server Jobs
                 toolHandlers.put("idempiere_server_job_list_jobs",
-                                (id, args, token, sessionId) -> McpProcessExecutor.list_server_jobs(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.list_server_jobs(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_server_job_get",
-                                (id, args, token, sessionId) -> McpProcessExecutor.get_server_job(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.get_server_job(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_server_job_get_logs",
-                                (id, args, token, sessionId) -> McpProcessExecutor.get_server_job_logs(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.get_server_job_logs(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_server_job_toggle_state",
-                                (id, args, token, sessionId) -> McpProcessExecutor.toggle_server_job_state(id, args,
+                                (id, args, token) -> McpProcessExecutor.toggle_server_job_state(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_server_job_run",
-                                (id, args, token, sessionId) -> McpProcessExecutor.run_server_job(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.run_server_job(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_server_job_reload_jobs",
-                                (id, args, token, sessionId) -> McpProcessExecutor.reload_server_jobs(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.reload_server_jobs(id, args, token,
                                                 restClient));
 
                 // Scheduler
                 toolHandlers.put("idempiere_scheduler_get_details",
-                                (id, args, token, sessionId) -> McpProcessExecutor.get_scheduler_details(id, args,
+                                (id, args, token) -> McpProcessExecutor.get_scheduler_details(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_scheduler_create_job",
-                                (id, args, token, sessionId) -> McpProcessExecutor.create_scheduler_job(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.create_scheduler_job(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_scheduler_delete_job",
-                                (id, args, token, sessionId) -> McpProcessExecutor.delete_scheduler_job(id, args, token,
+                                (id, args, token) -> McpProcessExecutor.delete_scheduler_job(id, args, token,
                                                 restClient));
 
                 // Windows
                 toolHandlers.put("idempiere_window_list_windows",
-                                (id, args, token, sessionId) -> McpWindowExecutor.list_windows(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.list_windows(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_tabs",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_window_tabs(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_window_tabs(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_tab_fields",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_window_tab_fields(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_window_tab_fields(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_records",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_window_records(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_window_records(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_create_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.create_window_record(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.create_window_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_window_record(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_window_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_print_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.print_window_record(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.print_window_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_tab_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_window_tab_record(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_window_tab_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_update_tab_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.update_window_tab_record(id, args,
+                                (id, args, token) -> McpWindowExecutor.update_window_tab_record(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_delete_tab_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.delete_window_tab_record(id, args,
+                                (id, args, token) -> McpWindowExecutor.delete_window_tab_record(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_get_child_tab_records",
-                                (id, args, token, sessionId) -> McpWindowExecutor.get_child_tab_records(id, args, token,
+                                (id, args, token) -> McpWindowExecutor.get_child_tab_records(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_window_create_child_tab_record",
-                                (id, args, token, sessionId) -> McpWindowExecutor.create_child_tab_record(id, args,
+                                (id, args, token) -> McpWindowExecutor.create_child_tab_record(id, args,
                                                 token,
                                                 restClient));
 
                 // Views
                 toolHandlers.put("idempiere_view_list_views",
-                                (id, args, token, sessionId) -> McpViewExecutor.list_views(id, args, token,
+                                (id, args, token) -> McpViewExecutor.list_views(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_yaml",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_yaml(id, args, token,
+                                (id, args, token) -> McpViewExecutor.get_view_yaml(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_search_records",
-                                (id, args, token, sessionId) -> McpViewExecutor.search_view_records(id, args, token,
+                                (id, args, token) -> McpViewExecutor.search_view_records(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_create_record",
-                                (id, args, token, sessionId) -> McpViewExecutor.create_view_record(id, args, token,
+                                (id, args, token) -> McpViewExecutor.create_view_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_record",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_record(id, args, token,
+                                (id, args, token) -> McpViewExecutor.get_view_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_update_record",
-                                (id, args, token, sessionId) -> McpViewExecutor.update_view_record(id, args, token,
+                                (id, args, token) -> McpViewExecutor.update_view_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_delete_record",
-                                (id, args, token, sessionId) -> McpViewExecutor.delete_view_record(id, args, token,
+                                (id, args, token) -> McpViewExecutor.delete_view_record(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_record_property",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_record_property(id, args,
+                                (id, args, token) -> McpViewExecutor.get_view_record_property(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_record_attachments",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_record_attachments(id, args,
+                                (id, args, token) -> McpViewExecutor.get_view_record_attachments(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_add_record_attachment",
-                                (id, args, token, sessionId) -> McpViewExecutor.add_view_record_attachment(id, args,
+                                (id, args, token) -> McpViewExecutor.add_view_record_attachment(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_delete_record_attachments",
-                                (id, args, token, sessionId) -> McpViewExecutor.delete_view_record_attachments(id, args,
+                                (id, args, token) -> McpViewExecutor.delete_view_record_attachments(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_record_attachments_zip",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_record_attachments_zip(id,
+                                (id, args, token) -> McpViewExecutor.get_view_record_attachments_zip(id,
                                                 args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_get_record_attachment_by_name",
-                                (id, args, token, sessionId) -> McpViewExecutor.get_view_record_attachment_by_name(id,
+                                (id, args, token) -> McpViewExecutor.get_view_record_attachment_by_name(id,
                                                 args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_view_print_record",
-                                (id, args, token, sessionId) -> McpViewExecutor.print_view_record(id, args, token,
+                                (id, args, token) -> McpViewExecutor.print_view_record(id, args, token,
                                                 restClient));
 
                 // References
                 toolHandlers.put("idempiere_reference_get",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_reference(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_reference(id, args, token,
                                                 restClient));
 
                 // Caches
                 toolHandlers.put("idempiere_cache_list_caches",
-                                (id, args, token, sessionId) -> McpMiscExecutor.list_caches(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.list_caches(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_cache_reset",
-                                (id, args, token, sessionId) -> McpMiscExecutor.reset_cache(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.reset_cache(id, args, token,
                                                 restClient));
 
                 // Nodes
                 toolHandlers.put("idempiere_node_list_nodes",
-                                (id, args, token, sessionId) -> McpMiscExecutor.list_nodes(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.list_nodes(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_node_get",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_node(id, args, token, restClient));
+                                (id, args, token) -> McpMiscExecutor.get_node(id, args, token, restClient));
                 toolHandlers.put("idempiere_node_get_logs",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_node_logs(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_node_logs(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_node_delete_log",
-                                (id, args, token, sessionId) -> McpMiscExecutor.delete_node_logs(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.delete_node_logs(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_node_get_log_file",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_node_log_file(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_node_log_file(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_node_rotate_log",
-                                (id, args, token, sessionId) -> McpMiscExecutor.rotate_node_log(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.rotate_node_log(id, args, token,
                                                 restClient));
 
                 // Info Windows
                 toolHandlers.put("idempiere_info_list_info_windows",
-                                (id, args, token, sessionId) -> McpInfoExecutor.list_info_windows(id, args, token,
+                                (id, args, token) -> McpInfoExecutor.list_info_windows(id, args, token,
                                                 restClient));
 
                 toolHandlers.put("idempiere_info_get_info_window_data",
-                                (id, args, token, sessionId) -> McpInfoExecutor.get_info_window_data(id, args, token,
+                                (id, args, token) -> McpInfoExecutor.get_info_window_data(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_info_get_info_window_columns",
-                                (id, args, token, sessionId) -> McpInfoExecutor.get_info_window_columns(id, args, token,
+                                (id, args, token) -> McpInfoExecutor.get_info_window_columns(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_info_get_info_window_processes",
-                                (id, args, token, sessionId) -> McpInfoExecutor.get_info_window_processes(id, args,
+                                (id, args, token) -> McpInfoExecutor.get_info_window_processes(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_info_get_info_window_related_infos",
-                                (id, args, token, sessionId) -> McpInfoExecutor.get_info_window_related_infos(id, args,
+                                (id, args, token) -> McpInfoExecutor.get_info_window_related_infos(id, args,
                                                 token,
                                                 restClient));
 
                 // Auth
                 toolHandlers.put("idempiere_auth_create_token",
-                                (id, args, token, sessionId) -> McpAuthExecutor.create(id, args, token, sessionId,
+                                (id, args, token) -> McpAuthExecutor.create(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_auth_update_token",
-                                (id, args, token, sessionId) -> McpAuthExecutor.update(id, args, token, sessionId,
+                                (id, args, token) -> McpAuthExecutor.update(id, args, token,
                                                 restClient));
-                toolHandlers.put("idempiere_auth_set_token",
-                                (id, args, token, sessionId) -> McpAuthExecutor.setToken(id, args, token, sessionId));
                 toolHandlers.put("idempiere_auth_logout",
-                                (id, args, token, sessionId) -> McpAuthExecutor.logout(id, args, token, sessionId,
+                                (id, args, token) -> McpAuthExecutor.logout(id, args, token,
                                                 restClient));
 
                 // Workflows
                 toolHandlers.put("idempiere_workflow_list_activities",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.list_workflow_activities(id, args,
+                                (id, args, token) -> McpWorkflowExecutor.list_workflow_activities(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_workflow_approve_activity",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.approve_workflow_activity(id, args,
+                                (id, args, token) -> McpWorkflowExecutor.approve_workflow_activity(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_workflow_reject_activity",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.reject_workflow_activity(id, args,
+                                (id, args, token) -> McpWorkflowExecutor.reject_workflow_activity(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_workflow_forward_activity",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.forward_workflow_activity(id, args,
+                                (id, args, token) -> McpWorkflowExecutor.forward_workflow_activity(id, args,
                                                 token,
                                                 restClient));
                 toolHandlers.put("idempiere_workflow_acknowledge_activity",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.acknowledge_workflow_activity(id,
+                                (id, args, token) -> McpWorkflowExecutor.acknowledge_workflow_activity(id,
                                                 args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_workflow_set_activity_user_choice",
-                                (id, args, token, sessionId) -> McpWorkflowExecutor.set_workflow_activity_user_choice(
+                                (id, args, token) -> McpWorkflowExecutor.set_workflow_activity_user_choice(
                                                 id, args,
                                                 token,
                                                 restClient));
 
                 // Status Lines
                 toolHandlers.put("idempiere_status_list_status_lines",
-                                (id, args, token, sessionId) -> McpMiscExecutor.list_status_lines(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.list_status_lines(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_status_get_status_line",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_status_line(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_status_line(id, args, token,
                                                 restClient));
 
                 // Charts
                 toolHandlers.put("idempiere_chart_get_charts_data",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_charts_data(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_charts_data(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_chart_get",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_chart(id, args, token, restClient));
+                                (id, args, token) -> McpMiscExecutor.get_chart(id, args, token, restClient));
                 toolHandlers.put("idempiere_chart_get_data",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_chart_data(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_chart_data(id, args, token,
                                                 restClient));
 
                 // Menu
                 toolHandlers.put("idempiere_menu_tree_get",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_menu_tree(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_menu_tree(id, args, token,
                                                 restClient));
 
                 // Uploads
                 toolHandlers.put("idempiere_upload_initiate",
-                                (id, args, token, sessionId) -> McpMiscExecutor.initiate_upload(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.initiate_upload(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_list_pending_uploads",
-                                (id, args, token, sessionId) -> McpMiscExecutor.list_pending_uploads(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.list_pending_uploads(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_chunk",
-                                (id, args, token, sessionId) -> McpMiscExecutor.upload_chunk(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.upload_chunk(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_get_status",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_upload_status(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_upload_status(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_cancel",
-                                (id, args, token, sessionId) -> McpMiscExecutor.cancel_upload(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.cancel_upload(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_get_uploaded_file",
-                                (id, args, token, sessionId) -> McpMiscExecutor.get_uploaded_file(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.get_uploaded_file(id, args, token,
                                                 restClient));
                 toolHandlers.put("idempiere_upload_copy_uploaded_file",
-                                (id, args, token, sessionId) -> McpMiscExecutor.copy_uploaded_file(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.copy_uploaded_file(id, args, token,
                                                 restClient));
 
                 // Batch
                 toolHandlers.put("idempiere_execute_batch",
-                                (id, args, token, sessionId) -> McpMiscExecutor.execute_batch(id, args, token,
+                                (id, args, token) -> McpMiscExecutor.execute_batch(id, args, token,
                                                 restClient));
         }
 
-        private String handleToolCall(String id, JsonObject params, String token, String sessionId) {
+        private String handleToolCall(String id, JsonObject params, String token) {
                 String name = params.get("name").getAsString();
                 JsonObject args = params.getAsJsonObject("arguments");
 
                 ToolHandler handler = toolHandlers.get(name);
                 if (handler != null) {
-                        return handler.handle(id, args, token, sessionId);
+                        return handler.handle(id, args, token);
                 } else {
                         return createError(id, -32601, "Tool not found: " + name);
                 }
@@ -1100,7 +1089,7 @@ public class McpServiceImpl implements IMcpService {
                 return createSuccess(id, r);
         }
 
-        private String handleReadResource(String id, JsonObject params, String token, String sessionId) {
+        private String handleReadResource(String id, JsonObject params, String token) {
                 String uri = params.get("uri").getAsString();
                 if (uri.equals("idempiere://metadata/models"))
                         return McpResourceExecutor.listModels(id, token, restClient);
