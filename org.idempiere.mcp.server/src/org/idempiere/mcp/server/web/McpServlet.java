@@ -163,7 +163,8 @@ public class McpServlet extends HttpServlet {
 				String key = AUTHORIZATION_BEARER_ARGUMENT;
 				JsonObject arguments = params.getAsJsonObject("arguments");
 				if (arguments.has(key) && !arguments.get(key).isJsonNull()) {
-					JsonElement el = arguments.get(key);
+					// extract and remove token from further processing						
+					JsonElement el = arguments.remove(key);
 					if (el.isJsonPrimitive()) {
 						String val = el.getAsString();
 						if (Util.isEmpty(val, true))
