@@ -28,10 +28,8 @@ package org.idempiere.mcp.server.web;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.util.Enumeration;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
@@ -47,6 +45,8 @@ import org.adempiere.base.Service;
 import org.compiere.util.CLogger;
 import org.compiere.util.Util;
 import org.idempiere.mcp.server.api.IMcpService;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -55,9 +55,9 @@ import com.google.gson.JsonParser;
 
 @WebServlet(name = "McpServlet", urlPatterns = { "/*" }, asyncSupported = true, loadOnStartup = 1)
 public class McpServlet extends HttpServlet {
-	private static final String STATUS_PATH = "/status";
+	public static final String AUTHORIZATION_BEARER_ARGUMENT = "_authorization_bearer";
 
-	private static final String PROTOCOL_VERSION = "protocolVersion";
+	private static final String STATUS_PATH = "/status";
 
 	private static final String APPLICATION_JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
@@ -72,6 +72,10 @@ public class McpServlet extends HttpServlet {
 	public static final String X_MCP_HEADER = "x-mcp-header";
 
 	public static final String DEFAULT_MCP_PROTOCOL_VERSION = "2026-07-28";
+	public static final String LEGACY_MCP_PROTOCOL_VERSION = "2025-11-25";
+	public static final String PRINT_REQUEST_PROPERTY = "org.idempiere.mcp.print.request";
+
+	private static final Gson prettyGson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
 	// JSON-RPC and MCP error codes
 	public static final int ERROR_PARSE_ERROR = -32700;
@@ -85,12 +89,10 @@ public class McpServlet extends HttpServlet {
 	public static final int ERROR_SERVICE_NOT_FOUND = -32000;
 
 	// Environment variable names
-	private static final String ENV_MCP_PROTOCOL_VERSION = "MCP_PROTOCOL_VERSION";
 	private static final String ENV_MCP_CORS_ORIGIN = "MCP_CORS_ORIGIN";
 	private static final String ENV_THREAD_POOL_SIZE = "MCP_THREAD_POOL_SIZE";
 
 	// Configurable values
-	private String protocolVersion = DEFAULT_MCP_PROTOCOL_VERSION;
 	private String corsOrigin = "*";
 	private int threadPoolSize = 100;
 	private static final CLogger log = CLogger.getCLogger(McpServlet.class);
@@ -104,7 +106,8 @@ public class McpServlet extends HttpServlet {
 		loadConfigFromEnv();
 		requestExecutor = Executors.newFixedThreadPool(threadPoolSize);
 		if (log.isLoggable(Level.INFO))
-			log.info("Stateless MCP Servlet initialized. Protocol=" + protocolVersion + ", threadPool=" + threadPoolSize);
+			log.info("Stateless MCP Servlet initialized. Protocols=[" + LEGACY_MCP_PROTOCOL_VERSION + "," 
+				+ DEFAULT_MCP_PROTOCOL_VERSION + "], threadPool=" + threadPoolSize);
 	}
 
 	@Override
@@ -119,11 +122,6 @@ public class McpServlet extends HttpServlet {
 
 	private void loadConfigFromEnv() {
 		try {
-			String pv = System.getenv(ENV_MCP_PROTOCOL_VERSION);
-			if (pv != null && !pv.trim().isEmpty()) {
-				protocolVersion = pv.trim();
-			}
-
 			String cors = System.getenv(ENV_MCP_CORS_ORIGIN);
 			if (cors != null && !cors.trim().isEmpty()) {
 				corsOrigin = cors.trim();
@@ -138,19 +136,62 @@ public class McpServlet extends HttpServlet {
 		}
 	}
 
-	private String extractToken(HttpServletRequest req) {
+	private String extractToken(HttpServletRequest req, JsonObject jsonObject) {
 		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
 		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
 			String token = authHeader.substring(PREFIX_BEARER.length()).trim();
-			return Util.isEmpty(token, true) ? null : token;
+			if (!Util.isEmpty(token, true))
+				return token;
 		}
+		// optionally get token from JSON request body
+		if (jsonObject != null) {
+			String token = getTokenFromJsonObject(jsonObject);
+			if (token != null)
+				return token;
+		}
+		return null;
+	}
+
+	private String getTokenFromJsonObject(JsonObject jsonObject) {
+		if (jsonObject == null)
+			return null;
+
+		// params.arguments["_authorization_bearer"]
+		if (jsonObject.has("params") && jsonObject.get("params").isJsonObject()) {
+			JsonObject params = jsonObject.getAsJsonObject("params");
+			if (params.has("arguments") && params.get("arguments").isJsonObject()) {
+				String key = AUTHORIZATION_BEARER_ARGUMENT;
+				JsonObject arguments = params.getAsJsonObject("arguments");
+				if (arguments.has(key) && !arguments.get(key).isJsonNull()) {
+					JsonElement el = arguments.get(key);
+					if (el.isJsonPrimitive()) {
+						String val = el.getAsString();
+						if (Util.isEmpty(val, true))
+							return null;
+						return val.trim();
+					}
+				}
+			}
+		}
+		
 		return null;
 	}
 
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		if (isPrintRequest()) {
+			String body = null;
+			try {
+				body = readBody(req);
+			} catch (Exception e) {
+				body = "<error reading body: " + e.getMessage() + ">";
+			}
+			printRequest(req, body);
+		}
+		
 		buildRestBaseURL(req);
 		setCommonResponseHeader(resp);
+
 		String path = req.getPathInfo();
 		// status endpoint
 		if (STATUS_PATH.equals(path)) {
@@ -166,7 +207,10 @@ public class McpServlet extends HttpServlet {
 		resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
 		setCommonResponseHeader(resp);
 		JsonObject json = new JsonObject();
-		json.addProperty(PROTOCOL_VERSION, protocolVersion);
+		JsonArray protocols = new JsonArray();
+		protocols.add(LEGACY_MCP_PROTOCOL_VERSION);
+		protocols.add(DEFAULT_MCP_PROTOCOL_VERSION);
+		json.add("supportedProtocolVersions", protocols);
 		json.addProperty("status", "running");
 		json.addProperty("timestamp", System.currentTimeMillis());
 		writeJson(resp, json);
@@ -178,7 +222,6 @@ public class McpServlet extends HttpServlet {
 		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
 		resp.setHeader("Access-Control-Expose-Headers",
 				MCP_PROTOCOL_VERSION_HEADER + ", " + MCP_METHOD_HEADER + ", " + MCP_NAME_HEADER + ", Content-Type");
-		resp.setHeader(MCP_PROTOCOL_VERSION_HEADER, protocolVersion);
 		// Prevent buffering in proxies/reverse proxies
 		resp.setHeader("X-Accel-Buffering", "no");
 	}
@@ -219,10 +262,14 @@ public class McpServlet extends HttpServlet {
 	
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String jsonBody = readBody(req);
+		if (isPrintRequest()) {
+			printRequest(req, jsonBody);
+		}
+		
 		buildRestBaseURL(req);
 		setCommonResponseHeader(resp);
 
-		String jsonBody = readBody(req);
 		JsonObject jsonObject;
 		try {
 			JsonElement parsed = JsonParser.parseString(jsonBody);
@@ -257,9 +304,11 @@ public class McpServlet extends HttpServlet {
 			}
 		}
 		String requestedVersion = (headerVersion != null && !headerVersion.trim().isEmpty()) ? headerVersion.trim() : metaVersion;
-		if (requestedVersion != null && !protocolVersion.equals(requestedVersion)) {
+		if (requestedVersion != null && !LEGACY_MCP_PROTOCOL_VERSION.equals(requestedVersion)
+			 && !DEFAULT_MCP_PROTOCOL_VERSION.equals(requestedVersion)) {
 			sendJsonRpcError(resp, idElement, ERROR_UNSUPPORTED_PROTOCOL_VERSION,
-					"Unsupported protocol version: " + requestedVersion + ". Supported version: " + protocolVersion);
+					"Unsupported protocol version: " + requestedVersion + ". Supported versions: " 
+					+ LEGACY_MCP_PROTOCOL_VERSION + ", " + DEFAULT_MCP_PROTOCOL_VERSION);
 			return;
 		}
 
@@ -288,56 +337,9 @@ public class McpServlet extends HttpServlet {
 			}
 		}
 
-		// server/discover RPC handling
-		if ("server/discover".equals(method)) {
-			sendDiscoverResponse(resp, idElement);
-			return;
-		}
-
 		// Stateless Request Processing
-		String token = extractToken(req);
-		executeRequest(token, jsonBody, resp);
-	}
-
-	private void sendDiscoverResponse(HttpServletResponse resp, JsonElement idElement) {
-		JsonObject result = new JsonObject();
-		result.addProperty(PROTOCOL_VERSION, protocolVersion);
-
-		JsonArray supportedVersions = new JsonArray();
-		supportedVersions.add(protocolVersion);
-		result.add("supportedProtocolVersions", supportedVersions);
-
-		JsonObject capabilities = new JsonObject();
-		JsonObject tools = new JsonObject();
-		tools.addProperty("listChanged", false);
-		capabilities.add("tools", tools);
-		JsonObject resources = new JsonObject();
-		resources.addProperty("subscribe", false);
-		resources.addProperty("listChanged", false);
-		capabilities.add("resources", resources);
-		result.add("capabilities", capabilities);
-
-		JsonObject serverInfo = new JsonObject();
-		serverInfo.addProperty("name", "iDempiere MCP Server");
-		serverInfo.addProperty("version", "1.0.0");
-		result.add("serverInfo", serverInfo);
-
-		JsonObject meta = new JsonObject();
-		meta.add("io.modelcontextprotocol/serverInfo", serverInfo);
-		result.add("_meta", meta);
-
-		result.addProperty("resultType", "complete");
-
-		JsonObject json = new JsonObject();
-		json.addProperty("jsonrpc", "2.0");
-		if (idElement != null && !idElement.isJsonNull()) {
-			json.add("id", idElement);
-		} else {
-			json.add("id", JsonNull.INSTANCE);
-		}
-		json.add("result", result);
-
-		writeJsonResponse(resp, json.toString(), HttpServletResponse.SC_OK);
+		String token = extractToken(req, jsonObject);
+		executeRequest(token, jsonObject, resp);
 	}
 
 	private String readBody(HttpServletRequest req) throws IOException {
@@ -349,9 +351,11 @@ public class McpServlet extends HttpServlet {
 		return sb.toString();
 	}
 
-	private void executeRequest(String token, String jsonBody, HttpServletResponse resp) {
-		log.info("MCP executeRequest - body=" + 
-				(jsonBody.length() > 100 ? jsonBody.substring(0, 100) + "..." : jsonBody));
+	private void executeRequest(String token, JsonObject jsonObject, HttpServletResponse resp) {
+		if (log.isLoggable(Level.INFO) && jsonObject != null) {
+			log.info("MCP executeRequest - body=" + 
+					(jsonObject.toString().length() > 100 ? jsonObject.toString().substring(0, 100) + "..." : jsonObject.toString()));
+		}
 		
 		IMcpService service = Service.locator().locate(IMcpService.class).getService();
 		String response = null;
@@ -359,7 +363,7 @@ public class McpServlet extends HttpServlet {
 			if (service != null) {
 				try {
 					log.info("MCP calling service.processRequest...");
-					response = service.processRequest(jsonBody, token);
+					response = service.processRequest(jsonObject, token);
 					log.info("MCP service returned response: " + (response != null ? response.substring(0, Math.min(200, response.length())) + "..." : "null"));
 				} catch (Exception e) {
 					log.log(Level.WARNING, "MCP Execution Failed", e);
@@ -455,5 +459,67 @@ public class McpServlet extends HttpServlet {
 	protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		setCommonResponseHeader(resp);
 		resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "DELETE method is not supported in stateless MCP");
+	}
+
+	public static boolean isPrintRequest() {
+		return Boolean.getBoolean(PRINT_REQUEST_PROPERTY) || "true".equalsIgnoreCase(System.getProperty(PRINT_REQUEST_PROPERTY));
+	}
+
+	private void printRequest(HttpServletRequest req, String body) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("==================== MCP Request ====================\n");
+		sb.append("Method: ").append(req.getMethod()).append("\n");
+		sb.append("URL: ").append(req.getRequestURL());
+		if (req.getQueryString() != null && !req.getQueryString().isEmpty()) {
+			sb.append("?").append(req.getQueryString());
+		}
+		sb.append("\n");
+		sb.append("Protocol: ").append(req.getProtocol()).append("\n");
+		sb.append("Remote Addr: ").append(req.getRemoteAddr()).append("\n");
+
+		sb.append("Headers:\n");
+		Enumeration<String> headerNames = req.getHeaderNames();
+		if (headerNames != null) {
+			while (headerNames.hasMoreElements()) {
+				String headerName = headerNames.nextElement();
+				Enumeration<String> headerValues = req.getHeaders(headerName);
+				while (headerValues.hasMoreElements()) {
+					sb.append("  ").append(headerName).append(": ").append(headerValues.nextElement()).append("\n");
+				}
+			}
+		}
+
+		Map<String, String[]> parameterMap = req.getParameterMap();
+		if (parameterMap != null && !parameterMap.isEmpty()) {
+			sb.append("Parameters:\n");
+			for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
+				sb.append("  ").append(entry.getKey()).append(": ")
+						.append(String.join(", ", entry.getValue())).append("\n");
+			}
+		}
+
+		sb.append("Body:\n");
+		if (body != null && !body.trim().isEmpty()) {
+			sb.append(formatBody(body)).append("\n");
+		} else {
+			sb.append("<empty>\n");
+		}
+		sb.append("=====================================================");
+		System.out.println(sb.toString());
+	}
+
+	private String formatBody(String body) {
+		if (body == null || body.trim().isEmpty()) {
+			return body;
+		}
+		try {
+			JsonElement jsonElement = JsonParser.parseString(body);
+			if (jsonElement != null && (jsonElement.isJsonObject() || jsonElement.isJsonArray())) {
+				return prettyGson.toJson(jsonElement);
+			}
+		} catch (Exception e) {
+			// Not a JSON object or array, return raw body
+		}
+		return body;
 	}
 }

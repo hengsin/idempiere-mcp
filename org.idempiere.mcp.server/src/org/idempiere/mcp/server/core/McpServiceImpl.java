@@ -39,37 +39,50 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+/**
+ * MCP Service Implementation.
+ * <p>
+ * Authentication: MCP tools receive HTTP Authorization Bearer token as either
+ * HTTP Authorization header ({@code Authorization: Bearer <token>}) or as the
+ * {@code "_authorization_bearer"} property of {@code "params.arguments"} (the json request body).
+ * Clients may provide the token via either mechanism; the server checks the
+ * HTTP Authorization header first and falls back to {@code params.arguments["_authorization_bearer"]}.
+ * </p>
+ */
 @Component(service = IMcpService.class, immediate = true)
 public class McpServiceImpl implements IMcpService {
-
         private final CLogger log = CLogger.getCLogger(McpServiceImpl.class);
         private final Gson gson = new Gson();
         private final RestApiClient restClient = new RestApiClient();
 
         @Override
-        public String processRequest(String jsonRequest, String authToken) {
+        public String processRequest(JsonObject jsonRequest, String authToken) {
                 JsonElement requestIdElement = null;
                 String requestId = null;
                 try {
-                        JsonObject req = JsonParser.parseString(jsonRequest).getAsJsonObject();
-                        if (req.has("id") && !req.get("id").isJsonNull()) {
-                                requestIdElement = req.get("id");
+                        if (jsonRequest.has("id") && !jsonRequest.get("id").isJsonNull()) {
+                                requestIdElement = jsonRequest.get("id");
                                 requestId = requestIdElement.getAsString();
                         }
 
-                        String method = req.get("method").getAsString();
+                        String method = jsonRequest.get("method").getAsString();
                         if (log.isLoggable(Level.INFO))
                                 log.info("MCP Request: " + method);
+                        // No response needed for notification
+                        if (method.startsWith("notifications/")) {
+                                return null;
+                        }
 
-                        JsonObject params = req.has("params") ? req.getAsJsonObject("params") : new JsonObject();
+                        JsonObject params = jsonRequest.has("params") ? jsonRequest.getAsJsonObject("params") : new JsonObject();
 
                         String response;
                         switch (method) {
-                                case "server/discover":
-                                        response = handleServerDiscover(requestId);
+                                case "initialize":
+                                        response = handleServerDiscover(requestId, McpServlet.LEGACY_MCP_PROTOCOL_VERSION);
                                         break;
-                                case "notifications/cancelled":
-                                        return null; // No response needed for notification
+                                case "server/discover":
+                                        response = handleServerDiscover(requestId, McpServlet.DEFAULT_MCP_PROTOCOL_VERSION);
+                                        break;
                                 case "tools/list":
                                         response = handleListTools(requestId);
                                         break;
@@ -106,7 +119,7 @@ public class McpServiceImpl implements IMcpService {
                 }
         }
 
-        private String handleServerDiscover(String id) {
+        private String handleServerDiscover(String id, String protocolVersion) {
                 JsonObject capabilities = new JsonObject();
 
                 // Declare support for Tools and Resources
@@ -123,16 +136,20 @@ public class McpServiceImpl implements IMcpService {
                 serverInfo.addProperty("version", "1.0.0");
 
                 JsonObject result = new JsonObject();
-                result.addProperty("protocolVersion", "2026-07-28");
+                result.addProperty("protocolVersion", protocolVersion);
                 JsonArray supportedVersions = new JsonArray();
-                supportedVersions.add("2026-07-28");
+                supportedVersions.add(protocolVersion);
                 result.add("supportedProtocolVersions", supportedVersions);
                 result.add("capabilities", capabilities);
-                result.add("serverInfo", serverInfo);
-
-                JsonObject meta = new JsonObject();
-                meta.add("io.modelcontextprotocol/serverInfo", serverInfo);
-                result.add("_meta", meta);
+                
+                if (McpServlet.LEGACY_MCP_PROTOCOL_VERSION.equals(protocolVersion)) {
+                        result.add("serverInfo", serverInfo);                        
+                } else {
+                        JsonObject meta = new JsonObject();
+                        meta.add("io.modelcontextprotocol/serverInfo", serverInfo);
+                        result.add("_meta", meta);
+                        result.addProperty("ttlMs",3600000);
+                }
 
                 return createSuccess(id, result);
         }
@@ -1116,6 +1133,10 @@ public class McpServiceImpl implements IMcpService {
                                 pObj.add(p[0], i);
                         }
                 }
+                JsonObject tokenProperty = new JsonObject();
+                tokenProperty.addProperty("type", "string");
+                tokenProperty.addProperty("description", "Optional HTTP Authorization Bearer Token");
+                pObj.add(McpServlet.AUTHORIZATION_BEARER_ARGUMENT, tokenProperty);
                 schema.add("properties", pObj);
                 schema.add("required", gson.toJsonTree(req));
                 t.add("inputSchema", schema);

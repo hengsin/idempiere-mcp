@@ -25,6 +25,8 @@
 **********************************************************************/
 package org.idempiere.mcp.server.api;
 
+import com.google.gson.JsonObject;
+
 public interface IMcpService {
-    String processRequest(String jsonRequest, String authToken);
+    String processRequest(JsonObject jsonRequest, String authToken);
 }
