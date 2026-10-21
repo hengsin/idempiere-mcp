@@ -29,5 +29,5 @@ import com.google.gson.JsonObject;
 
 @FunctionalInterface
 public interface ToolHandler {
-    String handle(String id, JsonObject params, String token, String sessionId);
+    String handle(String id, JsonObject params, String token);
 }

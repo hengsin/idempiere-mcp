@@ -62,6 +62,8 @@ public class McpResourceExecutor {
         
         JsonArray contents = new JsonArray(); contents.add(item);
         JsonObject res = new JsonObject(); res.add("contents", contents);
+        res.addProperty("ttlMs", 300000L);
+        res.addProperty("cacheScope", "private");
         return McpServiceImpl.createSuccess(id, res);
     }
     

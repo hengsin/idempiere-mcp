@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.logging.Level;
 
 import org.compiere.util.CLogger;
+import org.compiere.util.Util;
 import org.idempiere.mcp.server.config.McpConfig;
 import org.idempiere.mcp.server.web.McpServlet;
 import com.google.gson.Gson;
@@ -82,7 +83,6 @@ public class RestApiClient {
     }
 
     private HttpRequest.Builder createBuilder(String path, String token, String accept) {
-        String validToken = getValidToken(token);
         String url = McpConfig.getBaseUrl() + (path.startsWith("/") ? path : "/" + path);
 
         if (log.isLoggable(Level.FINE)) {
@@ -93,67 +93,11 @@ public class RestApiClient {
                 .uri(URI.create(url))
                 .header("Accept", accept != null ? accept : "application/json");
 
-        if (validToken != null) {
-            builder.header("Authorization", "Bearer " + validToken);
+        if (!Util.isEmpty(token, true)) {
+            builder.header("Authorization", "Bearer " + token);
         }
 
         return builder;
-    }
-
-    private String getValidToken(String token) {
-        String sessionId = McpServlet.getCurrentSessionId();
-        if (sessionId == null) {
-            return token;
-        }
-        McpServlet.TokenInfo tokenInfo = McpServlet.getTokenInfo(sessionId);
-        if (tokenInfo == null) {
-            return token;
-        }
-        if (tokenInfo.isExpired()) {
-            String refreshToken = tokenInfo.getRefreshToken();
-            if (refreshToken != null) {
-                try {
-                    if (log.isLoggable(Level.INFO)) {
-                        log.info("Token expired. Refreshing token using refresh_token...");
-                    }
-                    JsonObject body = new JsonObject();
-                    body.addProperty("refresh_token", refreshToken);
-
-                    if (tokenInfo.getClientId() != null) {
-                        body.addProperty("clientId", tokenInfo.getClientId());
-                    }
-                    if (tokenInfo.getUserId() != null) {
-                        body.addProperty("userId", tokenInfo.getUserId());
-                    }
-
-                    String url = McpConfig.getBaseUrl() + "/auth/refresh";
-                    HttpRequest.Builder builder = HttpRequest.newBuilder()
-                            .uri(URI.create(url))
-                            .header("Accept", "application/json")
-                            .header("Content-Type", "application/json")
-                            .POST(BodyPublishers.ofString(gson.toJson(body)));
-
-                    HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() < 300) {
-                        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-                        if (json.has("token")) {
-                            String newToken = json.get("token").getAsString();
-                            String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
-                            McpServlet.updateToken(sessionId, newToken, newRefreshToken);
-                            if (log.isLoggable(Level.INFO)) {
-                                log.info("Token successfully refreshed.");
-                            }
-                            return newToken;
-                        }
-                    } else {
-                        log.warning("Token refresh request failed with status: " + response.statusCode() + ", body: " + response.body());
-                    }
-                } catch (Exception e) {
-                    log.log(Level.WARNING, "Failed to refresh token", e);
-                }
-            }
-        }
-        return tokenInfo.getToken();
     }
 
     private JsonElement execute(String method, String path, JsonObject body, String token) throws Exception {

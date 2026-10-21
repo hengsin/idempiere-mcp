@@ -28,22 +28,14 @@ package org.idempiere.mcp.server.web;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.util.Enumeration;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
-import javax.servlet.AsyncContext;
-import javax.servlet.AsyncEvent;
-import javax.servlet.AsyncListener;
 import javax.servlet.ServletException;
-import javax.servlet.ServletResponse;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -53,449 +45,186 @@ import org.adempiere.base.Service;
 import org.compiere.util.CLogger;
 import org.compiere.util.Util;
 import org.idempiere.mcp.server.api.IMcpService;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 @WebServlet(name = "McpServlet", urlPatterns = { "/*" }, asyncSupported = true, loadOnStartup = 1)
 public class McpServlet extends HttpServlet {
+	public static final String AUTHORIZATION_BEARER_ARGUMENT = "_authorization_bearer";
+
 	private static final String STATUS_PATH = "/status";
 
-	private static final String PROTOCOL_VERSION = "protocolVersion";
-
-	private static final String SESSION_ID = "sessionId";
-
-	private static final String APPLICATION_JSON_CONTENT_TYPE = "application/json";
-
-	private static final String TEXT_EVENT_STREAM_CONTENT_TYPE = "text/event-stream";
+	private static final String APPLICATION_JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
 	private static final long serialVersionUID = 1L;
 
 	private static final String HEADER_AUTHORIZATION = "Authorization";
 	private static final String PREFIX_BEARER = "Bearer ";
 
-	private static final String STREAMING_SESSION_HEADER = "Mcp-Session-Id";
+	public static final String MCP_PROTOCOL_VERSION_HEADER = "Mcp-Protocol-Version";
+	public static final String MCP_METHOD_HEADER = "Mcp-Method";
+	public static final String MCP_NAME_HEADER = "Mcp-Name";
+	public static final String X_MCP_HEADER = "x-mcp-header";
 
-	private static final String MCP_PROTOCOL_VERSION_HEADER = "Mcp-Protocol-Version";
-	private static final String DEFAULT_MCP_PROTOCOL_VERSION = "2024-11-05";
-	private static final long DEFAULT_STREAMING_SESSION_TTL_MS = TimeUnit.MINUTES.toMillis(30);
-	private static final long DEFAULT_CLEANUP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(10);
+	public static final String DEFAULT_MCP_PROTOCOL_VERSION = "2026-07-28";
+	public static final String LEGACY_MCP_PROTOCOL_VERSION = "2025-11-25";
+	public static final String PRINT_REQUEST_PROPERTY = "org.idempiere.mcp.print.request";
+
+	private static final Gson prettyGson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+
+	// JSON-RPC and MCP error codes
+	public static final int ERROR_PARSE_ERROR = -32700;
+	public static final int ERROR_INVALID_REQUEST = -32600;
+	public static final int ERROR_METHOD_NOT_FOUND = -32601;
+	public static final int ERROR_INVALID_PARAMS = -32602;
+	public static final int ERROR_INTERNAL = -32603;
+	public static final int ERROR_HEADER_MISMATCH = -32020;
+	public static final int ERROR_MISSING_CLIENT_CAPABILITY = -32021;
+	public static final int ERROR_UNSUPPORTED_PROTOCOL_VERSION = -32022;
+	public static final int ERROR_SERVICE_NOT_FOUND = -32000;
+
 	// Environment variable names
-	private static final String ENV_MCP_PROTOCOL_VERSION = "MCP_PROTOCOL_VERSION";
-	private static final String ENV_STREAMING_SESSION_TTL_MIN = "MCP_STREAMING_SESSION_TTL_MINUTES";
-	private static final String ENV_STREAMING_SESSION_TTL_MS = "MCP_STREAMING_SESSION_TTL_MS";
-	private static final String ENV_CLEANUP_INTERVAL_MIN = "MCP_CLEANUP_INTERVAL_MINUTES";
-	private static final String ENV_CLEANUP_INTERVAL_MS = "MCP_CLEANUP_INTERVAL_MS";
-	private static final String ENV_HEARTBEAT_INTERVAL_MS = "MCP_HEARTBEAT_INTERVAL_MS";
 	private static final String ENV_MCP_CORS_ORIGIN = "MCP_CORS_ORIGIN";
 	private static final String ENV_THREAD_POOL_SIZE = "MCP_THREAD_POOL_SIZE";
+
 	// Configurable values
-	private String protocolVersion = DEFAULT_MCP_PROTOCOL_VERSION;
-	private long streamingSessionTtlMs = DEFAULT_STREAMING_SESSION_TTL_MS;
-	private long cleanupIntervalMs = DEFAULT_CLEANUP_INTERVAL_MS;
-	private long heartbeatIntervalMs = 15000; // Default 15s heartbeat
 	private String corsOrigin = "*";
 	private int threadPoolSize = 100;
 	private static final CLogger log = CLogger.getCLogger(McpServlet.class);
 
 	private ExecutorService requestExecutor;
 
-	// Store active SSE sessions: SessionID -> AsyncContext
-	private static final Map<String, AsyncContext> sessions = new ConcurrentHashMap<>();
-	// Store active sessions: SessionID -> TokenInfo (token + refresh token + cached JWT claims)
-	private static final Map<String, TokenInfo> tokenInfos = new ConcurrentHashMap<>();
-	// Track current sessionId in thread local
-	private static final ThreadLocal<String> currentSessionId = new ThreadLocal<>();
-	// Track last access for sessions
-	private static final Map<String, Long> lastAccess = new ConcurrentHashMap<>();
-
-	/**
-	 * Holds token, refresh token, and cached JWT claims for a session.
-	 */
-	public static class TokenInfo {
-		private final String token;
-		private final String refreshToken;
-		/** JWT exp claim in seconds since epoch */
-		private final long expSeconds;
-		private final Integer clientId;
-		private final Integer userId;
-
-		public TokenInfo(String token, String refreshToken) {
-			this.token = token;
-			this.refreshToken = refreshToken;
-			// Parse and cache JWT claims once
-			long parsedExp = 0;
-			Integer parsedClientId = null;
-			Integer parsedUserId = null;
-			if (token != null) {
-				try {
-					String[] parts = token.split("\\.");
-					if (parts.length >= 2) {
-						String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-						JsonObject json = JsonParser.parseString(payload).getAsJsonObject();
-						if (json.has("exp")) {
-							parsedExp = json.get("exp").getAsLong();
-						}
-						if (json.has("clientId") && !json.get("clientId").isJsonNull()) {
-							parsedClientId = json.get("clientId").getAsInt();
-						}
-						if (json.has("userId") && !json.get("userId").isJsonNull()) {
-							parsedUserId = json.get("userId").getAsInt();
-						}
-					}
-				} catch (Exception e) {
-					// ignore parse errors, keep defaults
-				}
-			}
-			this.expSeconds = parsedExp;
-			this.clientId = parsedClientId;
-			this.userId = parsedUserId;
-		}
-
-		public String getToken() { return token; }
-		public String getRefreshToken() { return refreshToken; }
-		public long getExpSeconds() { return expSeconds; }
-		public Integer getClientId() { return clientId; }
-		public Integer getUserId() { return userId; }
-
-		/**
-		 * Check if the token is expired (with a 10-second buffer)
-		 * @return true if the token is expired
-		 */
-		public boolean isExpired() {
-			if (expSeconds <= 0) return false;
-			return (expSeconds * 1000L) - 10000L < System.currentTimeMillis();
-		}
-	}
-
-	private ScheduledExecutorService cleanupScheduler;
-	private static long cleanedSessionsCount = 0; // metrics: total expired sessions cleaned
-
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		// load configuration from environment variables
 		loadConfigFromEnv();
-		// start background cleanup
-		cleanupScheduler = Executors.newSingleThreadScheduledExecutor();
-		cleanupScheduler.scheduleAtFixedRate(this::cleanupSessions, cleanupIntervalMs, cleanupIntervalMs,
-				TimeUnit.MILLISECONDS);
 		requestExecutor = Executors.newFixedThreadPool(threadPoolSize);
 		if (log.isLoggable(Level.INFO))
-			log.info("MCP Servlet initialized. Session cleanup scheduled every " + cleanupIntervalMs
-				+ " ms, Heartbeat every " + heartbeatIntervalMs + " ms, TTL=" + streamingSessionTtlMs + " ms, protocol="
-				+ protocolVersion + ", threadPool=" + threadPoolSize);
+			log.info("Stateless MCP Servlet initialized. Protocols=[" + LEGACY_MCP_PROTOCOL_VERSION + "," 
+				+ DEFAULT_MCP_PROTOCOL_VERSION + "], threadPool=" + threadPoolSize);
 	}
 
 	@Override
 	public void destroy() {
-		if (cleanupScheduler != null) {
-			cleanupScheduler.shutdownNow();
-		}
 		if (requestExecutor != null) {
 			requestExecutor.shutdownNow();
 		}
 		super.destroy();
 		if (log.isLoggable(Level.INFO))
-			log.info("MCP Servlet destroyed. Cleanup scheduler stopped.");
+			log.info("MCP Servlet destroyed.");
 	}
 
 	private void loadConfigFromEnv() {
 		try {
-			String pv = System.getenv(ENV_MCP_PROTOCOL_VERSION);
-			if (pv != null && !pv.trim().isEmpty()) {
-				protocolVersion = pv.trim();
-			}
-
 			String cors = System.getenv(ENV_MCP_CORS_ORIGIN);
 			if (cors != null && !cors.trim().isEmpty()) {
 				corsOrigin = cors.trim();
 			}
 
-			streamingSessionTtlMs = getLongEnv(ENV_STREAMING_SESSION_TTL_MS, ENV_STREAMING_SESSION_TTL_MIN,
-					DEFAULT_STREAMING_SESSION_TTL_MS);
-			cleanupIntervalMs = getLongEnv(ENV_CLEANUP_INTERVAL_MS, ENV_CLEANUP_INTERVAL_MIN,
-					DEFAULT_CLEANUP_INTERVAL_MS);
-
-			// Heartbeat
-			String hbMs = System.getenv(ENV_HEARTBEAT_INTERVAL_MS);
-			if (hbMs != null && !hbMs.trim().isEmpty()) {
-				heartbeatIntervalMs = Long.parseLong(hbMs.trim());
-			}
-
-			// Thread Pool
 			String tpSize = System.getenv(ENV_THREAD_POOL_SIZE);
 			if (tpSize != null && !tpSize.trim().isEmpty()) {
 				threadPoolSize = Integer.parseInt(tpSize.trim());
 			}
 		} catch (Exception e) {
 			log.log(Level.WARNING, "Failed to load MCP servlet config from environment", e);
-			// keep defaults
-		}
-		// enforce minimums to avoid too aggressive cleanup
-		if (cleanupIntervalMs < TimeUnit.SECONDS.toMillis(30)) {
-			cleanupIntervalMs = TimeUnit.SECONDS.toMillis(30);
-		}
-		if (streamingSessionTtlMs < TimeUnit.MINUTES.toMillis(1)) {
-			streamingSessionTtlMs = TimeUnit.MINUTES.toMillis(1);
 		}
 	}
 
-	private long getLongEnv(String keyMs, String keyMin, long defaultValue) {
-		try {
-			String valMs = System.getenv(keyMs);
-			String valMin = System.getenv(keyMin);
-			if (valMs != null && !valMs.trim().isEmpty()) {
-				return Long.parseLong(valMs.trim());
-			} else if (valMin != null && !valMin.trim().isEmpty()) {
-				return TimeUnit.MINUTES.toMillis(Long.parseLong(valMin.trim()));
-			}
-		} catch (Exception e) {
-			log.log(Level.WARNING, "Failed to parse env vars: " + keyMs + " or " + keyMin, e);
-		}
-		return defaultValue;
-	}
-
-	private void cleanupSessions() {
-		long now = System.currentTimeMillis();
-		for (Map.Entry<String, Long> e : lastAccess.entrySet()) {
-			String sessionId = e.getKey();
-			long last = e.getValue();
-			if (now - last > streamingSessionTtlMs) {
-				// remove streaming token
-				tokenInfos.remove(sessionId);
-				// close SSE async context if present
-				AsyncContext ctx = sessions.remove(sessionId);
-				if (ctx != null) {
-					try {
-						ctx.complete();
-					} catch (Exception ex) {
-						/* ignore */ }
-				}
-				lastAccess.remove(sessionId);
-				cleanedSessionsCount++;
-				if (log.isLoggable(Level.INFO))
-					log.info("Cleaned up expired session: " + sessionId);
-			}
-		}
-	}
-
-	public static void setCurrentSessionId(String sessionId) {
-		currentSessionId.set(sessionId);
-	}
-
-	public static String getCurrentSessionId() {
-		return currentSessionId.get();
-	}
-
-	public static void clearCurrentSessionId() {
-		currentSessionId.remove();
-	}
-
-	public static String getToken(String sessionId) {
-		if (sessionId == null) return null;
-		TokenInfo info = tokenInfos.get(sessionId);
-		return info != null ? info.getToken() : null;
-	}
-
-	public static String getRefreshToken(String sessionId) {
-		if (sessionId == null) return null;
-		TokenInfo info = tokenInfos.get(sessionId);
-		return info != null ? info.getRefreshToken() : null;
-	}
-
-	/**
-	 * Get the TokenInfo for a session
-	 * @param sessionId
-	 * @return TokenInfo or null
-	 */
-	public static TokenInfo getTokenInfo(String sessionId) {
-		return sessionId != null ? tokenInfos.get(sessionId) : null;
-	}
-
-	/**
-	 * Update or remove token and refresh token for a session.
-	 * JWT claims (exp, clientId, userId) are parsed and cached at this time.
-	 * 
-	 * @param sessionId
-	 * @param token
-	 * @param refreshToken
-	 */
-	public static void updateToken(String sessionId, String token, String refreshToken) {
-		if (!Util.isEmpty(sessionId, true)) {
-			if (!Util.isEmpty(token, true)) {
-				tokenInfos.put(sessionId, new TokenInfo(token, refreshToken));
-			} else {
-				tokenInfos.remove(sessionId);
-			}
-		}
-	}
-
-	/**
-	 * Update or remove token for a session (legacy compatibility)
-	 * 
-	 * @param sessionId
-	 * @param token     null or empty string to remove existing token of a session
-	 */
-	public static void updateToken(String sessionId, String token) {
-		updateToken(sessionId, token, null);
-	}
-
-	private String extractToken(HttpServletRequest req) {
+	private String extractToken(HttpServletRequest req, JsonObject jsonObject) {
 		String authHeader = req.getHeader(HEADER_AUTHORIZATION);
 		if (authHeader != null && authHeader.startsWith(PREFIX_BEARER)) {
 			String token = authHeader.substring(PREFIX_BEARER.length()).trim();
-			return Util.isEmpty(token, true) ? null : token;
+			if (!Util.isEmpty(token, true))
+				return token;
 		}
+		// optionally get token from JSON request body
+		if (jsonObject != null) {
+			String token = getTokenFromJsonObject(jsonObject);
+			if (token != null)
+				return token;
+		}
+		return null;
+	}
+
+	private String getTokenFromJsonObject(JsonObject jsonObject) {
+		if (jsonObject == null)
+			return null;
+
+		// params.arguments["_authorization_bearer"]
+		if (jsonObject.has("params") && jsonObject.get("params").isJsonObject()) {
+			JsonObject params = jsonObject.getAsJsonObject("params");
+			if (params.has("arguments") && params.get("arguments").isJsonObject()) {
+				String key = AUTHORIZATION_BEARER_ARGUMENT;
+				JsonObject arguments = params.getAsJsonObject("arguments");
+				if (arguments.has(key) && !arguments.get(key).isJsonNull()) {
+					// extract and remove token from further processing						
+					JsonElement el = arguments.remove(key);
+					if (el.isJsonPrimitive()) {
+						String val = el.getAsString();
+						if (Util.isEmpty(val, true))
+							return null;
+						return val.trim();
+					}
+				}
+			}
+		}
+		
 		return null;
 	}
 
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		if (isPrintRequest()) {
+			String body = null;
+			try {
+				body = readBody(req);
+			} catch (Exception e) {
+				body = "<error reading body: " + e.getMessage() + ">";
+			}
+			printRequest(req, body);
+		}
+		
 		buildRestBaseURL(req);
 		setCommonResponseHeader(resp);
+
 		String path = req.getPathInfo();
 		// status endpoint
 		if (STATUS_PATH.equals(path)) {
 			doGetStatus(resp);
 			return;
 		}
-		
-		// GET opens asynchronous connection
-		String sessionId = req.getHeader(STREAMING_SESSION_HEADER);
-		// MUST have session id
-		if (Util.isEmpty(sessionId, true)) {
-			resp.sendError(HttpServletResponse.SC_BAD_REQUEST,
-					String.format("Missing %s header", STREAMING_SESSION_HEADER));
-			return;
-		}
-		
-		// Session must have been created via initialize first
-		if (!lastAccess.containsKey(sessionId)) {
-			resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Invalid or expired session ID. Call initialize first.");
-			return;
-		}
-	    
-	    resp.setContentType(TEXT_EVENT_STREAM_CONTENT_TYPE);		
-		// If there is already an asynchronous connection, replace
-		AsyncContext existing = sessions.get(sessionId);
-		if (existing != null) {
-			log.info("MCP replacing existing SSE connection for session: " + sessionId);
-			try {
-				existing.complete();
-			} catch (Exception ignore) {
-			}
-		}
-		
-		AsyncContext asyncContext = req.startAsync();
-		asyncContext.setTimeout(0);
-		sessions.put(sessionId, asyncContext);
-		lastAccess.put(sessionId, System.currentTimeMillis());
-		setupListeners(asyncContext, sessionId);
-		// Echo session id
-		resp.setHeader(STREAMING_SESSION_HEADER, sessionId);
-		resp.setStatus(HttpServletResponse.SC_OK);
-		
-		// Send SSE comment to confirm stream is open (optional but helps with proxies)
-	    try {
-	        PrintWriter writer = resp.getWriter();
-	        writer.write(": stream opened\n\n");
-	        writer.flush();
-	    } catch (IOException e) {
-	        log.log(Level.WARNING, "Failed to write stream confirmation", e);
-	    }	    
-		log.info("MCP SSE stream opened for session: " + sessionId);
+
+		resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED,
+				"GET method is only supported for " + STATUS_PATH + ". Use POST for MCP requests.");
 	}
 
 	private void doGetStatus(HttpServletResponse resp) {
 		resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
 		setCommonResponseHeader(resp);
 		JsonObject json = new JsonObject();
-		json.addProperty(PROTOCOL_VERSION, protocolVersion);
-		json.addProperty("sessionTTLMillis", streamingSessionTtlMs);
-		json.addProperty("cleanupIntervalMillis", cleanupIntervalMs);
-		json.addProperty("activeSessionCount", sessions.size());
-		json.addProperty("trackedSessionCount", lastAccess.size());
-		json.addProperty("cleanedSessionTotal", cleanedSessionsCount);
+		JsonArray protocols = new JsonArray();
+		protocols.add(LEGACY_MCP_PROTOCOL_VERSION);
+		protocols.add(DEFAULT_MCP_PROTOCOL_VERSION);
+		json.add("supportedProtocolVersions", protocols);
+		json.addProperty("status", "running");
 		json.addProperty("timestamp", System.currentTimeMillis());
-		// Provide a lightweight summary of session ids (may be large, so limit to first
-		// 50)
-		int limit = 50;
-		int i = 0;
-		JsonObject sessionSummary = new JsonObject();
-		for (String sid : sessions.keySet()) {
-			if (i++ >= limit)
-				break;
-			Long last = lastAccess.get(sid);
-			sessionSummary.addProperty(sid, last != null ? last : -1L);
-		}
-		json.add("sessions", sessionSummary);
 		writeJson(resp, json);
-	}
-
-	private void setupListeners(AsyncContext asyncContext, String sessionId) {
-		asyncContext.addListener(new AsyncListener() {
-			@Override
-			public void onComplete(AsyncEvent event) {
-				log.info("MCP SSE session completed: " + sessionId);
-				sessions.remove(sessionId);
-				tokenInfos.remove(sessionId);
-				lastAccess.remove(sessionId);
-			}
-
-			@Override
-			public void onTimeout(AsyncEvent event) {
-				log.info("MCP SSE session timeout: " + sessionId);
-				sessions.remove(sessionId);
-				tokenInfos.remove(sessionId);
-				lastAccess.remove(sessionId);
-			}
-
-			@Override
-			public void onError(AsyncEvent event) {
-				log.warning("MCP SSE session error: " + sessionId + " - " + event.getThrowable());
-				sessions.remove(sessionId);
-				tokenInfos.remove(sessionId);
-				lastAccess.remove(sessionId);
-			}
-
-			@Override
-			public void onStartAsync(AsyncEvent event) {
-			}
-		});
 	}
 
 	private void setCommonResponseHeader(HttpServletResponse resp) {
 		resp.setCharacterEncoding("UTF-8");
 		resp.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-		resp.setHeader("Connection", "keep-alive");
 		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
-		// Expose headers so browser clients can read them
 		resp.setHeader("Access-Control-Expose-Headers",
-				STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER + ", Content-Type");
-		resp.setHeader(MCP_PROTOCOL_VERSION_HEADER, protocolVersion);
+				MCP_PROTOCOL_VERSION_HEADER + ", " + MCP_METHOD_HEADER + ", " + MCP_NAME_HEADER + ", Content-Type");
 		// Prevent buffering in proxies/reverse proxies
 		resp.setHeader("X-Accel-Buffering", "no");
-	}
-
-	private void sendStreamingEvent(AsyncContext ctx, String eventName, String data) {
-		try {
-			ServletResponse response = ctx.getResponse();
-			response.setContentType(TEXT_EVENT_STREAM_CONTENT_TYPE);
-			PrintWriter writer = response.getWriter();
-			synchronized (writer) {
-				writer.write("event: " + eventName + "\n");
-				writer.write("data: " + data + "\n\n");
-				writer.flush();
-			}
-			if (log.isLoggable(Level.FINE))
-				log.fine("Sent SSE event: " + eventName);
-		} catch (IOException e) {
-			log.log(Level.WARNING, "Failed to send Streaming event", e);
-			try {
-				ctx.complete();
-			} catch (Exception ignore) {}
-			sessions.values().remove(ctx);
-		}
 	}
 
 	private static final AtomicReference<String> restBaseUrl = new AtomicReference<>(null);
@@ -510,17 +239,17 @@ public class McpServlet extends HttpServlet {
 			// The incoming request may arrive via HTTPS (e.g. nginx reverse proxy),
 			// but the REST API listens on plain HTTP on localhost.
 			String scheme = "http";
-            String host = "localhost";
-            int port = req.getLocalPort();
+			String host = "localhost";
+			int port = req.getLocalPort();
 
-            // Construct the base URL, handling default ports
-            StringBuilder urlBuilder = new StringBuilder();
-            urlBuilder.append(scheme).append("://").append(host);
-            if (port != -1 && !((scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443))) {
-                urlBuilder.append(":").append(port);
-            }
-            urlBuilder.append("/api/v1");
-            restBaseUrl.set(urlBuilder.toString());
+			// Construct the base URL, handling default ports
+			StringBuilder urlBuilder = new StringBuilder();
+			urlBuilder.append(scheme).append("://").append(host);
+			if (port != -1 && !((scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443))) {
+				urlBuilder.append(":").append(port);
+			}
+			urlBuilder.append("/api/v1");
+			restBaseUrl.set(urlBuilder.toString());
 		}		
 	}
 	
@@ -534,35 +263,84 @@ public class McpServlet extends HttpServlet {
 	
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String jsonBody = readBody(req);
+		if (isPrintRequest()) {
+			printRequest(req, jsonBody);
+		}
+		
 		buildRestBaseURL(req);
 		setCommonResponseHeader(resp);
 
-		String sessionId = req.getHeader(STREAMING_SESSION_HEADER);				
-		String jsonBody = readBody(req);
-		JsonObject jsonObject = JsonParser.parseString(jsonBody).getAsJsonObject();
-		String method = jsonObject.get("method").getAsString();
-		boolean isInitialize = "initialize".equals(method);
-		if (isInitialize && Util.isEmpty(sessionId, true)) {
-			sessionId = UUID.randomUUID().toString();
-			String token = extractToken(req);
-			if (token != null)
-				tokenInfos.put(sessionId, new TokenInfo(token, null));
-			lastAccess.put(sessionId, System.currentTimeMillis());								
-		} else {			
-			if (Util.isEmpty(sessionId, true)) {
-				resp.sendError(HttpServletResponse.SC_BAD_REQUEST,
-						String.format("Missing %s header", STREAMING_SESSION_HEADER));
+		JsonObject jsonObject;
+		try {
+			JsonElement parsed = JsonParser.parseString(jsonBody);
+			if (!parsed.isJsonObject()) {
+				sendJsonRpcError(resp, null, ERROR_INVALID_REQUEST, "Invalid JSON-RPC request: expected JSON object");
 				return;
 			}
-			if (!lastAccess.containsKey(sessionId)) {
-				resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Invalid or expired session ID");
-				return;
-			}
-			lastAccess.put(sessionId, System.currentTimeMillis());			
+			jsonObject = parsed.getAsJsonObject();
+		} catch (Exception e) {
+			sendJsonRpcError(resp, null, ERROR_PARSE_ERROR, "Parse error: " + e.getMessage());
+			return;
 		}
-		
-		resp.setHeader(STREAMING_SESSION_HEADER, sessionId);
-		processRequest(sessionId, jsonBody, resp);
+
+		JsonElement idElement = jsonObject.get("id");
+
+		if (!jsonObject.has("method") || jsonObject.get("method").isJsonNull()) {
+			sendJsonRpcError(resp, idElement, ERROR_INVALID_REQUEST, "Missing required 'method' property");
+			return;
+		}
+
+		String method = jsonObject.get("method").getAsString();
+		JsonObject params = (jsonObject.has("params") && jsonObject.get("params").isJsonObject())
+				? jsonObject.getAsJsonObject("params") : new JsonObject();
+
+		// Protocol Version validation
+		String headerVersion = req.getHeader(MCP_PROTOCOL_VERSION_HEADER);
+		String metaVersion = null;
+		if (params.has("_meta") && params.get("_meta").isJsonObject()) {
+			JsonObject meta = params.getAsJsonObject("_meta");
+			if (meta.has("io.modelcontextprotocol/protocolVersion") && !meta.get("io.modelcontextprotocol/protocolVersion").isJsonNull()) {
+				metaVersion = meta.get("io.modelcontextprotocol/protocolVersion").getAsString();
+			}
+		}
+		String requestedVersion = (headerVersion != null && !headerVersion.trim().isEmpty()) ? headerVersion.trim() : metaVersion;
+		if (requestedVersion != null && !LEGACY_MCP_PROTOCOL_VERSION.equals(requestedVersion)
+			 && !DEFAULT_MCP_PROTOCOL_VERSION.equals(requestedVersion)) {
+			sendJsonRpcError(resp, idElement, ERROR_UNSUPPORTED_PROTOCOL_VERSION,
+					"Unsupported protocol version: " + requestedVersion + ". Supported versions: " 
+					+ LEGACY_MCP_PROTOCOL_VERSION + ", " + DEFAULT_MCP_PROTOCOL_VERSION);
+			return;
+		}
+
+		// Header Mismatch Validation (SEP-2243)
+		String headerMethod = req.getHeader(MCP_METHOD_HEADER);
+		if (headerMethod != null && !headerMethod.trim().isEmpty()) {
+			if (!headerMethod.trim().equals(method)) {
+				sendJsonRpcError(resp, idElement, ERROR_HEADER_MISMATCH,
+						"Header mismatch: " + MCP_METHOD_HEADER + " header '" + headerMethod.trim() + "' does not match request method '" + method + "'");
+				return;
+			}
+		}
+
+		String headerName = req.getHeader(MCP_NAME_HEADER);
+		if (headerName != null && !headerName.trim().isEmpty()) {
+			String targetName = null;
+			if (params.has("name") && !params.get("name").isJsonNull()) {
+				targetName = params.get("name").getAsString();
+			} else if (params.has("uri") && !params.get("uri").isJsonNull()) {
+				targetName = params.get("uri").getAsString();
+			}
+			if (targetName != null && !headerName.trim().equals(targetName)) {
+				sendJsonRpcError(resp, idElement, ERROR_HEADER_MISMATCH,
+						"Header mismatch: " + MCP_NAME_HEADER + " header '" + headerName.trim() + "' does not match request target name '" + targetName + "'");
+				return;
+			}
+		}
+
+		// Stateless Request Processing
+		String token = extractToken(req, jsonObject);
+		executeRequest(token, jsonObject, resp);
 	}
 
 	private String readBody(HttpServletRequest req) throws IOException {
@@ -574,52 +352,19 @@ public class McpServlet extends HttpServlet {
 		return sb.toString();
 	}
 
-	/**
-	 * Core MCP Logic Processor
-	 * 
-	 * @param sessionId
-	 * @param jsonBody
-	 * @param resp 
-	 */
-	private void processRequest(String sessionId, String jsonBody, HttpServletResponse resp) {
-		AsyncContext ctx = sessions.get(sessionId);
-		if (ctx != null) {
-			// Client has SSE stream open - process async and respond via SSE
-			log.info("MCP processRequest - using SSE for session: " + sessionId);
-			resp.setStatus(HttpServletResponse.SC_ACCEPTED);
-			try {
-				resp.flushBuffer();
-			} catch (IOException e) {
-				log.log(Level.WARNING, "Failed to flush 202 response", e);
-			}
-			requestExecutor.submit(() -> {
-				try {
-					executeRequest(sessionId, jsonBody, resp, true);
-				} catch (Exception e) {
-					log.log(Level.SEVERE, "MCP async execution failed", e);
-				}
-			});
-		} else {
-			// No SSE stream - respond directly in POST response
-			log.info("MCP processRequest - direct response (no SSE) for session: " + sessionId);
-			executeRequest(sessionId, jsonBody, resp, false);
+	private void executeRequest(String token, JsonObject jsonObject, HttpServletResponse resp) {
+		if (log.isLoggable(Level.INFO) && jsonObject != null) {
+			log.info("MCP executeRequest - body=" + 
+					(jsonObject.toString().length() > 100 ? jsonObject.toString().substring(0, 100) + "..." : jsonObject.toString()));
 		}
-	}
-
-	private void executeRequest(String sessionId, String jsonBody, HttpServletResponse resp, boolean isAsync) {
-		log.info("MCP executeRequest - sessionId=" + sessionId + ", isAsync=" + isAsync + ", body=" + 
-				(jsonBody.length() > 100 ? jsonBody.substring(0, 100) + "..." : jsonBody));
 		
-		// Execute via Service
 		IMcpService service = Service.locator().locate(IMcpService.class).getService();
 		String response = null;
 		try {
 			if (service != null) {
 				try {
-					TokenInfo info = tokenInfos.get(sessionId);
-					String token = info != null ? info.getToken() : null;
 					log.info("MCP calling service.processRequest...");
-					response = service.processRequest(jsonBody, token, sessionId);
+					response = service.processRequest(jsonObject, token);
 					log.info("MCP service returned response: " + (response != null ? response.substring(0, Math.min(200, response.length())) + "..." : "null"));
 				} catch (Exception e) {
 					log.log(Level.WARNING, "MCP Execution Failed", e);
@@ -634,50 +379,53 @@ public class McpServlet extends HttpServlet {
 			response = createErrorJson(-32603, "Internal error: " + e.getMessage());
 		}
 
-		// Send response back
 		if (response != null) {
-			if (isAsync) {
-				// Was supposed to use SSE - check if context is still valid
-				AsyncContext ctx = sessions.get(sessionId);
-				if (ctx != null) {
-					log.info("MCP sending response via SSE stream");
-					sendStreamingEvent(ctx, "message", response);
-				} else {
-					// SSE context was closed during processing - log warning but can't send response
-					log.warning("MCP SSE context closed during async processing, cannot send response for session: " + sessionId);
-				}
-			} else {
-				// No SSE stream - respond directly in HTTP response
-				log.info("MCP sending response directly in HTTP response");
-				try {
-					byte[] responseBytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-					resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
-					resp.setContentLength(responseBytes.length);
-					resp.setStatus(HttpServletResponse.SC_OK);
-					resp.getOutputStream().write(responseBytes);
-					resp.getOutputStream().flush();
-				} catch (IOException e) {
-					log.log(Level.WARNING, "Failed to write response", e);
-				}
-			}
+			writeJsonResponse(resp, response, HttpServletResponse.SC_OK);
 		} else {
-			// Notifications don't require JSON-RPC response, but we still need to send HTTP response
-			// Return 202 Accepted to acknowledge the notification was received
-			if (!isAsync) {
-				log.info("MCP notification processed, sending 202 Accepted");
-				try {
-					resp.setStatus(HttpServletResponse.SC_ACCEPTED);
-					resp.flushBuffer();
-				} catch (IOException e) {
-					log.log(Level.WARNING, "Failed to send notification acknowledgment", e);
-				}
+			// Notifications don't require JSON-RPC response, send 202 Accepted
+			log.info("MCP notification processed, sending 202 Accepted");
+			try {
+				resp.setStatus(HttpServletResponse.SC_ACCEPTED);
+				resp.flushBuffer();
+			} catch (IOException e) {
+				log.log(Level.WARNING, "Failed to send notification acknowledgment", e);
 			}
+		}
+	}
+
+	private void sendJsonRpcError(HttpServletResponse resp, JsonElement idElement, int code, String message) {
+		JsonObject json = new JsonObject();
+		json.addProperty("jsonrpc", "2.0");
+		if (idElement != null && !idElement.isJsonNull()) {
+			json.add("id", idElement);
+		} else {
+			json.add("id", JsonNull.INSTANCE);
+		}
+		JsonObject error = new JsonObject();
+		error.addProperty("code", code);
+		error.addProperty("message", message);
+		json.add("error", error);
+
+		writeJsonResponse(resp, json.toString(), HttpServletResponse.SC_OK);
+	}
+
+	private void writeJsonResponse(HttpServletResponse resp, String jsonContent, int statusCode) {
+		try {
+			byte[] responseBytes = jsonContent.getBytes(StandardCharsets.UTF_8);
+			resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
+			resp.setContentLength(responseBytes.length);
+			resp.setStatus(statusCode);
+			resp.getOutputStream().write(responseBytes);
+			resp.getOutputStream().flush();
+		} catch (IOException e) {
+			log.log(Level.WARNING, "Failed to write JSON response", e);
 		}
 	}
 
 	private String createErrorJson(int code, String message) {
 		JsonObject json = new JsonObject();
 		json.addProperty("jsonrpc", "2.0");
+		json.add("id", JsonNull.INSTANCE);
 		JsonObject error = new JsonObject();
 		error.addProperty("code", code);
 		error.addProperty("message", message);
@@ -690,11 +438,11 @@ public class McpServlet extends HttpServlet {
 	protected void doOptions(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		buildRestBaseURL(req);
 		resp.setHeader("Access-Control-Allow-Origin", corsOrigin);
-		resp.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+		resp.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 		resp.setHeader("Access-Control-Allow-Headers",
-				"Content-Type, Authorization, " + STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER);
+				"Content-Type, Authorization, " + MCP_PROTOCOL_VERSION_HEADER + ", " + MCP_METHOD_HEADER + ", " + MCP_NAME_HEADER + ", " + X_MCP_HEADER);
 		resp.setHeader("Access-Control-Expose-Headers",
-				STREAMING_SESSION_HEADER + ", " + MCP_PROTOCOL_VERSION_HEADER + ", Content-Type");
+				MCP_PROTOCOL_VERSION_HEADER + ", " + MCP_METHOD_HEADER + ", " + MCP_NAME_HEADER + ", Content-Type");
 		resp.setStatus(HttpServletResponse.SC_OK);
 	}
 
@@ -711,30 +459,68 @@ public class McpServlet extends HttpServlet {
 	@Override
 	protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		setCommonResponseHeader(resp);
+		resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "DELETE method is not supported in stateless MCP");
+	}
 
-		String sessionId = req.getHeader(STREAMING_SESSION_HEADER);
-		if (Util.isEmpty(sessionId, true)) {
-			resp.sendError(HttpServletResponse.SC_BAD_REQUEST, String.format("Missing %s header", STREAMING_SESSION_HEADER));
-			return;
+	public static boolean isPrintRequest() {
+		return Boolean.getBoolean(PRINT_REQUEST_PROPERTY) || "true".equalsIgnoreCase(System.getProperty(PRINT_REQUEST_PROPERTY));
+	}
+
+	private void printRequest(HttpServletRequest req, String body) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("==================== MCP Request ====================\n");
+		sb.append("Method: ").append(req.getMethod()).append("\n");
+		sb.append("URL: ").append(req.getRequestURL());
+		if (req.getQueryString() != null && !req.getQueryString().isEmpty()) {
+			sb.append("?").append(req.getQueryString());
 		}
-		// Close SSE context if present and remove session state
-		AsyncContext ctx = sessions.remove(sessionId);
-		if (ctx != null) {
-			try {
-				ctx.complete();
-			} catch (Exception ignore) {
+		sb.append("\n");
+		sb.append("Protocol: ").append(req.getProtocol()).append("\n");
+		sb.append("Remote Addr: ").append(req.getRemoteAddr()).append("\n");
+
+		sb.append("Headers:\n");
+		Enumeration<String> headerNames = req.getHeaderNames();
+		if (headerNames != null) {
+			while (headerNames.hasMoreElements()) {
+				String headerName = headerNames.nextElement();
+				Enumeration<String> headerValues = req.getHeaders(headerName);
+				while (headerValues.hasMoreElements()) {
+					sb.append("  ").append(headerName).append(": ").append(headerValues.nextElement()).append("\n");
+				}
 			}
 		}
-		tokenInfos.remove(sessionId);
-		lastAccess.remove(sessionId);
-		resp.setStatus(HttpServletResponse.SC_OK);
-		resp.setContentType(APPLICATION_JSON_CONTENT_TYPE);
-		JsonObject ack = new JsonObject();
-		ack.addProperty(SESSION_ID, sessionId);
-		ack.addProperty("disconnected", true);
-		ack.addProperty(PROTOCOL_VERSION, protocolVersion);
-		writeJson(resp, ack);
-		if (log.isLoggable(Level.INFO))
-			log.info("MCP Streamable HTTP session disconnected via DELETE. Session=" + sessionId);
+
+		Map<String, String[]> parameterMap = req.getParameterMap();
+		if (parameterMap != null && !parameterMap.isEmpty()) {
+			sb.append("Parameters:\n");
+			for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
+				sb.append("  ").append(entry.getKey()).append(": ")
+						.append(String.join(", ", entry.getValue())).append("\n");
+			}
+		}
+
+		sb.append("Body:\n");
+		if (body != null && !body.trim().isEmpty()) {
+			sb.append(formatBody(body)).append("\n");
+		} else {
+			sb.append("<empty>\n");
+		}
+		sb.append("=====================================================");
+		System.out.println(sb.toString());
+	}
+
+	private String formatBody(String body) {
+		if (body == null || body.trim().isEmpty()) {
+			return body;
+		}
+		try {
+			JsonElement jsonElement = JsonParser.parseString(body);
+			if (jsonElement != null && (jsonElement.isJsonObject() || jsonElement.isJsonArray())) {
+				return prettyGson.toJson(jsonElement);
+			}
+		} catch (Exception e) {
+			// Not a JSON object or array, return raw body
+		}
+		return body;
 	}
 }
