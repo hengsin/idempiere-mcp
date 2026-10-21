@@ -50,17 +50,6 @@ public class McpAuthExecutor {
             }
 
             JsonElement response = client.post("/auth/tokens", body, token);
-            String newToken = null;
-            String newRefreshToken = null;
-            if (response != null && response.isJsonObject()) {
-                JsonObject obj = response.getAsJsonObject();
-                if (obj.has("token")) {
-                    newToken = obj.get("token").getAsString();
-                    if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
-                        newRefreshToken = obj.get("refresh_token").getAsString();
-                    }
-                }
-            }
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -94,17 +83,6 @@ public class McpAuthExecutor {
             }
 
             JsonElement response = client.put("/auth/tokens", body, token);
-            String newToken = null;
-            String newRefreshToken = null;
-            if (response != null && response.isJsonObject()) {
-                JsonObject obj = response.getAsJsonObject();
-                if (obj.has("token")) {
-                    newToken = obj.get("token").getAsString();
-                    if (obj.has("refresh_token") && !obj.get("refresh_token").isJsonNull()) {
-                        newRefreshToken = obj.get("refresh_token").getAsString();
-                    }
-                }
-            }
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

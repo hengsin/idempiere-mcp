@@ -37,7 +37,6 @@ import java.util.logging.Level;
 import org.compiere.util.CLogger;
 import org.compiere.util.Util;
 import org.idempiere.mcp.server.config.McpConfig;
-import org.idempiere.mcp.server.web.McpServlet;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
