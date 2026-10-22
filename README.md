@@ -4,6 +4,9 @@ This project implements a stateless [Model Context Protocol (MCP)](https://model
 - 2025-11-25
 - 2026-07-28
 
+# Tools Reference
+- See [MCP_TOOLS.md](MCP_TOOLS.md) for the complete reference of all 88 MCP tools categorized by module.
+
 # Dependency
 - [iDempiere REST](https://github.com/bxservice/idempiere-rest)
 
