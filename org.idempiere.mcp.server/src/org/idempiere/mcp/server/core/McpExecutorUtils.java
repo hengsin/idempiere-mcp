@@ -27,13 +27,17 @@ package org.idempiere.mcp.server.core;
 
 import java.text.Normalizer;
 import java.text.Normalizer.Form;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 
 import org.compiere.util.CLogger;
+import org.compiere.util.Util;
 import org.idempiere.mcp.server.client.McpApiException;
+import org.idempiere.mcp.server.client.RestApiClient;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -134,5 +138,42 @@ public class McpExecutorUtils {
         String normalized = Normalizer.normalize(noseparators, Form.NFD);
         String slug = NONLATIN.matcher(normalized).replaceAll("");
         return slug.toLowerCase(Locale.ENGLISH).replaceAll("-{2,}", "-").replaceAll("^-|-$", "");
+    }
+
+    /**
+     * Extract dictionary maintenance and migration script headers from tool arguments.
+     *
+     * @param args tool arguments
+     * @return map of HTTP headers
+     */
+    public static Map<String, String> extractMigrationHeaders(JsonObject args) {
+        Map<String, String> headers = new HashMap<>();
+        if (args == null) {
+            return headers;
+        }
+        if (args.has("logMigrationScript") && !args.get("logMigrationScript").isJsonNull()) {
+            JsonElement el = args.get("logMigrationScript");
+            boolean val = (el.isJsonPrimitive() && el.getAsJsonPrimitive().isBoolean() && el.getAsBoolean())
+                    || "Y".equalsIgnoreCase(el.getAsString())
+                    || "true".equalsIgnoreCase(el.getAsString());
+            headers.put(RestApiClient.HEADER_LOG_MIGRATION_SCRIPT, val ? "Y" : "N");
+        }
+        if (args.has("adempiereSys") && !args.get("adempiereSys").isJsonNull()) {
+            JsonElement el = args.get("adempiereSys");
+            boolean val = (el.isJsonPrimitive() && el.getAsJsonPrimitive().isBoolean() && el.getAsBoolean())
+                    || "Y".equalsIgnoreCase(el.getAsString())
+                    || "true".equalsIgnoreCase(el.getAsString());
+            headers.put(RestApiClient.HEADER_ADEMPIERE_SYS, val ? "Y" : "N");
+        }
+        if (args.has("migrationScriptComment") && !args.get("migrationScriptComment").isJsonNull()) {
+            String comment = args.get("migrationScriptComment").getAsString();
+            if (!Util.isEmpty(comment, true)) {
+                String sanitized = comment.replace("\r", " ").replace("\n", " ").trim();
+                if (!Util.isEmpty(sanitized, true)) {
+                    headers.put(RestApiClient.HEADER_MIGRATION_SCRIPT_COMMENT, sanitized);
+                }
+            }
+        }
+        return headers;
     }
 }

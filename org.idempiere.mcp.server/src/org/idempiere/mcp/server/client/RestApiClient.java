@@ -45,6 +45,10 @@ import com.google.gson.JsonParser;
 
 public class RestApiClient {
 
+    public static final String HEADER_LOG_MIGRATION_SCRIPT = "X-ID-LogMigrationScript";
+    public static final String HEADER_ADEMPIERE_SYS = "X-ID-AdempiereSys";
+    public static final String HEADER_MIGRATION_SCRIPT_COMMENT = "X-ID-MigrationScriptComment";
+
     private final CLogger log = CLogger.getCLogger(RestApiClient.class);
     private final HttpClient client;
     private final Gson gson;
@@ -62,15 +66,27 @@ public class RestApiClient {
     }
 
     public JsonElement post(String path, JsonObject data, String token) throws Exception {
-        return execute("POST", path, data, token);
+        return post(path, data, token, null);
+    }
+
+    public JsonElement post(String path, JsonObject data, String token, Map<String, String> headers) throws Exception {
+        return execute("POST", path, data, token, headers);
     }
 
     public JsonElement put(String path, JsonObject data, String token) throws Exception {
-        return execute("PUT", path, data, token);
+        return put(path, data, token, null);
+    }
+
+    public JsonElement put(String path, JsonObject data, String token, Map<String, String> headers) throws Exception {
+        return execute("PUT", path, data, token, headers);
     }
 
     public JsonElement delete(String path, String token) throws Exception {
-        return execute("DELETE", path, null, token);
+        return delete(path, token, null);
+    }
+
+    public JsonElement delete(String path, String token, Map<String, String> headers) throws Exception {
+        return execute("DELETE", path, null, token, headers);
     }
 
     public String getYaml(String path, String token) throws Exception {
@@ -82,6 +98,10 @@ public class RestApiClient {
     }
 
     private HttpRequest.Builder createBuilder(String path, String token, String accept) {
+        return createBuilder(path, token, accept, null);
+    }
+
+    private HttpRequest.Builder createBuilder(String path, String token, String accept, Map<String, String> headers) {
         String url = McpConfig.getBaseUrl() + (path.startsWith("/") ? path : "/" + path);
 
         if (log.isLoggable(Level.FINE)) {
@@ -96,11 +116,23 @@ public class RestApiClient {
             builder.header("Authorization", "Bearer " + token);
         }
 
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                if (!Util.isEmpty(entry.getKey(), true) && !Util.isEmpty(entry.getValue(), true)) {
+                    builder.header(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
         return builder;
     }
 
     private JsonElement execute(String method, String path, JsonObject body, String token) throws Exception {
-        HttpRequest.Builder builder = createBuilder(path, token, "application/json");
+        return execute(method, path, body, token, null);
+    }
+
+    private JsonElement execute(String method, String path, JsonObject body, String token, Map<String, String> headers) throws Exception {
+        HttpRequest.Builder builder = createBuilder(path, token, "application/json", headers);
         builder.header("Content-Type", "application/json");
         setRequestMethod(builder, method, body);
 

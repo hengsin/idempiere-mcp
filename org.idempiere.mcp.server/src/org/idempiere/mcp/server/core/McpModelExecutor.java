@@ -74,7 +74,7 @@ public class McpModelExecutor {
         return McpExecutorUtils.execute(id, "Create Record", () -> {
             String model = args.get("model").getAsString();
             JsonObject data = args.get("data").getAsJsonObject();
-            JsonElement response = client.post("/models/" + model, data, token);
+            JsonElement response = client.post("/models/" + model, data, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -87,7 +87,7 @@ public class McpModelExecutor {
 
             String path = "/models/" + model + "/"
                     + (McpExecutorUtils.isInteger(idEl) ? idEl.getAsInt() : idEl.getAsString());
-            JsonElement response = client.put(path, data, token);
+            JsonElement response = client.put(path, data, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -97,7 +97,7 @@ public class McpModelExecutor {
             String tableName = args.get("tableName").getAsString();
             String recordId = args.get("record_id").getAsString();
             String path = "/models/" + URLEncoder.encode(tableName, StandardCharsets.UTF_8) + "/" + recordId;
-            JsonElement response = client.delete(path, token);
+            JsonElement response = client.delete(path, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

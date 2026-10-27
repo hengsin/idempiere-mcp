@@ -91,7 +91,7 @@ public class McpWindowExecutor {
             JsonObject data = args.get("data").getAsJsonObject();
             boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "?$save=" + save;
-            JsonElement response = client.post(path, data, token);
+            JsonElement response = client.post(path, data, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -142,7 +142,7 @@ public class McpWindowExecutor {
             boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/"
                     + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "?$save=" + save;
-            JsonElement response = client.put(path, data, token);
+            JsonElement response = client.put(path, data, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -154,7 +154,7 @@ public class McpWindowExecutor {
             String recordId = args.get("record_id").getAsString();
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/"
                     + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId;
-            JsonElement response = client.delete(path, token);
+            JsonElement response = client.delete(path, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }
@@ -179,12 +179,14 @@ public class McpWindowExecutor {
             String tabSlug = McpExecutorUtils.slugify(args.get("tab_name").getAsString());
             String recordId = args.get("record_id").getAsString();
             String childTabSlug = McpExecutorUtils.slugify(args.get("child_tab_name").getAsString());
+            if (args.get("data") == null)
+            	return McpExecutorUtils.wrapToolError(id, "No data element");
             JsonObject data = args.get("data").getAsJsonObject();
             boolean save = args.has("save") ? args.get("save").getAsBoolean() : true;
             String path = "/windows/" + URLEncoder.encode(windowSlug, StandardCharsets.UTF_8) + "/tabs/"
                     + URLEncoder.encode(tabSlug, StandardCharsets.UTF_8) + "/" + recordId + "/"
                     + URLEncoder.encode(childTabSlug, StandardCharsets.UTF_8) + "?$save=" + save;
-            JsonElement response = client.post(path, data, token);
+            JsonElement response = client.post(path, data, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

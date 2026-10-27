@@ -202,7 +202,10 @@ public class McpServiceImpl implements IMcpService {
                                                 + "**Hint** 'idempiere_window_get_records' and 'idempiere_window_get_child_tab_records' tool can also be used to search records within a window context." },
                                 new String[] { "data", "object", "JSON Object of fields."
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
-                                                + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)." }));
+                                                + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
 
                 tools.add(createTool("idempiere_model_update_record", "Update a record. "
                                 + "**Table Schema**: Use the 'idempiere_model_get_yaml' tool for model schema definition in openapi yaml format."
@@ -219,7 +222,10 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "id", "string", "Record ID" },
                                 new String[] { "data", "object", "Fields to update."
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
-                                                + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)." }));
+                                                + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
 
                 tools.add(createTool("idempiere_model_delete_record",
                                 "Delete record by id. 'idempiere_window_delete_tab_record' tool can also "
@@ -234,7 +240,10 @@ public class McpServiceImpl implements IMcpService {
                                                 + "**Hint**: Check 'idempiere://metadata/models' first to find Table Names."
                                                 + "**Hint**: Use the 'idempiere_model_list_models' tools get the list of models (tables)."
                                                 + "**Hint** 'idempiere_window_get_records' and 'idempiere_window_get_child_tab_records' tool can also be used to search records within a window context." },
-                                new String[] { "record_id", "string", "record id" }));
+                                new String[] { "record_id", "string", "record id" },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
 
                 tools.add(createTool("idempiere_model_get_record_property", "Get property value of a record."
                                 + "**Table Schema**: Use the 'idempiere_model_get_yaml' tool for model schema definition in openapi yaml format.",
@@ -334,7 +343,10 @@ public class McpServiceImpl implements IMcpService {
                                                                 + "2. use the 'idempiere_model_search_records' tool with ad_process as model."
                                                                 + "3. use the 'idempiere_window_get_records' tool for process window" },
                                 new String[] { "parameters", "object", "Process parameters as a JSON object. "
-                                                + "**Example**: {\"C_Order_ID\": 1000010, \"IsGenerated\": \"Y\"}." }));
+                                                + "**Example**: {\"C_Order_ID\": 1000010, \"IsGenerated\": \"Y\"}." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
 
                 tools.add(createTool("idempiere_server_job_list_jobs", "Get server jobs", new String[] {},
                                 new String[] {}));
@@ -416,7 +428,10 @@ public class McpServiceImpl implements IMcpService {
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
                                                 + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)."
                                                 + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
-                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
                 tools.add(createTool("idempiere_window_get_record", "Get record by id.",
                                 new String[] { "window_name", "record_id" },
                                 new String[] { "window_name", "string", "window name (ad_window.name)."
@@ -448,7 +463,10 @@ public class McpServiceImpl implements IMcpService {
                                                 + "**Special property in json data object**: 'doc-action' field to perform document actions. "
                                                 + "**Values**: CO (Complete), VO (Void), RE (Re-Activate), RC (Reverse Correct), RA (Reverse Accrual), PR (Prepare), CL (Close)."
                                                 + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
-                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
                 tools.add(createTool("idempiere_window_delete_tab_record", "Delete tab record by id."
                                 + "**Important Note**: Ask user for confirmation before deleting unless user explicitly ask for no confirmation. "
                                 + "**Ask User for confirmation**: When asking user for confirmation, show a table with field names and values.",
@@ -456,7 +474,10 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "window_name", "string", "window name (ad_window.name)."
                                                 + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
                                 new String[] { "tab_name", "string", "tab name (ad_tab.name)." },
-                                new String[] { "record_id", "string", "record id" }));
+                                new String[] { "record_id", "string", "record id" },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
                 tools.add(createTool("idempiere_window_get_child_tab_records", "Get child tab records",
                                 new String[] { "window_name", "tab_name", "record_id", "child_tab_name" },
                                 new String[] { "window_name", "string", "window name (ad_window.name)."
@@ -476,7 +497,10 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "child_tab_name", "string", "child tab name (ad_tab.name)." },
                                 new String[] { "data", "object", "JSON Object of fields."
                                                 + "**Field in the json data object**: use column name (ad_column.name), not field name as json property." },
-                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." }));
+                                new String[] { "save", "boolean", "If false, applies default values and callouts without persisting changes to the database (optional, default true)." },
+                                new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
+                                new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
+                                new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
 
                 // Views Tools
                 tools.add(createTool("idempiere_view_list_views", "List available views.", new String[] {},

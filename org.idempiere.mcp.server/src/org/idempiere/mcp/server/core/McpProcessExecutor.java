@@ -51,7 +51,7 @@ public class McpProcessExecutor {
 
             JsonObject payload = params.size() > 0 ? params : new JsonObject();
 
-            JsonElement response = client.post("/processes/" + processId, payload, token);
+            JsonElement response = client.post("/processes/" + processId, payload, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);
         });
     }

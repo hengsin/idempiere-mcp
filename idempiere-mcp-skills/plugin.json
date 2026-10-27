@@ -1,0 +1,11 @@
+{
+  "name": "idempiere-mcp",
+  "displayName": "iDempiere MCP Skills",
+  "version": "1.0.0",
+  "description": "Skills for interacting with iDempiere ERP via Model Context Protocol (MCP), including tenant/system authentication, table column management, window tab field configuration, and centralized ID setup.",
+  "suggestedPrompts": [
+    "Authenticate to iDempiere System tenant",
+    "Add a new column to an iDempiere table",
+    "Add a new field to an iDempiere window tab"
+  ]
+}
