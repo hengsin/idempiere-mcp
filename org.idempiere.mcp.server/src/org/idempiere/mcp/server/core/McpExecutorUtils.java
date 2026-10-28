@@ -25,8 +25,18 @@
 **********************************************************************/
 package org.idempiere.mcp.server.core;
 
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.text.Normalizer;
 import java.text.Normalizer.Form;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -44,6 +54,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class McpExecutorUtils {
 
@@ -175,5 +186,275 @@ public class McpExecutorUtils {
             }
         }
         return headers;
+    }
+
+    /**
+     * Resolve attachment payload from tool arguments.
+     * Supports:
+     * - local file path or URI path (as 'data' string or inside 'data' json object)
+     * - base64 encoded data (with 'name')
+     * - optional 'name' or 'fileName' override
+     *
+     * @param args tool arguments
+     * @return JsonObject payload for iDempiere REST API attachments endpoint
+     * @throws Exception if data cannot be resolved or read
+     */
+    public static JsonObject resolveAttachmentPayload(JsonObject args) throws Exception {
+        if (args == null || !args.has("data") || args.get("data").isJsonNull()) {
+            throw new IllegalArgumentException("'data' argument is required");
+        }
+
+        JsonElement dataEl = args.get("data");
+        String name = null;
+        if (args.has("name") && !args.get("name").isJsonNull()) {
+            name = args.get("name").getAsString();
+        } else if (args.has("fileName") && !args.get("fileName").isJsonNull()) {
+            name = args.get("fileName").getAsString();
+        }
+
+        Boolean overwrite = null;
+        if (args.has("overwrite") && !args.get("overwrite").isJsonNull()) {
+            overwrite = args.get("overwrite").getAsBoolean();
+        }
+
+        String pathOrUriOrBase64 = null;
+        if (dataEl.isJsonObject()) {
+            JsonObject obj = dataEl.getAsJsonObject();
+            if ((name == null || name.isEmpty()) && obj.has("name") && !obj.get("name").isJsonNull()) {
+                name = obj.get("name").getAsString();
+            }
+            if (overwrite == null && obj.has("overwrite") && !obj.get("overwrite").isJsonNull()) {
+                overwrite = obj.get("overwrite").getAsBoolean();
+            }
+            if (obj.has("data") && !obj.get("data").isJsonNull()) {
+                pathOrUriOrBase64 = obj.get("data").getAsString();
+            } else {
+                throw new IllegalArgumentException("Attachment object must contain 'data' property");
+            }
+        } else if (dataEl.isJsonPrimitive()) {
+            String str = dataEl.getAsString().trim();
+            if (str.startsWith("{") && str.endsWith("}")) {
+                try {
+                    JsonElement parsed = JsonParser.parseString(str);
+                    if (parsed.isJsonObject()) {
+                        JsonObject obj = parsed.getAsJsonObject();
+                        if ((name == null || name.isEmpty()) && obj.has("name") && !obj.get("name").isJsonNull()) {
+                            name = obj.get("name").getAsString();
+                        }
+                        if (overwrite == null && obj.has("overwrite") && !obj.get("overwrite").isJsonNull()) {
+                            overwrite = obj.get("overwrite").getAsBoolean();
+                        }
+                        if (obj.has("data") && !obj.get("data").isJsonNull()) {
+                            pathOrUriOrBase64 = obj.get("data").getAsString();
+                        }
+                    }
+                } catch (Exception e) {
+                    // Not a valid JSON object, treat as path or URI string
+                }
+            }
+            if (pathOrUriOrBase64 == null) {
+                pathOrUriOrBase64 = str;
+            }
+        } else {
+            throw new IllegalArgumentException("Invalid 'data' argument type");
+        }
+
+        byte[] bytes = null;
+        String base64Data = null;
+
+        URI uri = null;
+        int colonIdx = pathOrUriOrBase64.indexOf(':');
+        // Do not treat Windows drive letters (e.g. C:\) as URI schemes
+        if (colonIdx > 1) {
+            try {
+                URI candidate = URI.create(pathOrUriOrBase64);
+                if (candidate.isAbsolute()) {
+                    uri = candidate;
+                }
+            } catch (Exception e) {
+                // Not a valid URI
+            }
+        }
+
+        if (uri != null) {
+            if ("file".equalsIgnoreCase(uri.getScheme())) {
+                Path filePath = Path.of(uri);
+                bytes = Files.readAllBytes(filePath);
+                if (name == null || name.isEmpty()) {
+                    name = filePath.getFileName() != null ? filePath.getFileName().toString() : "attachment";
+                }
+            } else {
+                URL url = uri.toURL();
+                URLConnection conn = url.openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(30000);
+                try (InputStream in = conn.getInputStream()) {
+                    bytes = in.readAllBytes();
+                }
+                if (name == null || name.isEmpty()) {
+                    String header = conn.getHeaderField("Content-Disposition");
+                    if (header != null) {
+                        name = extractFilenameFromContentDisposition(header);
+                    }
+                    if (name == null || name.isEmpty()) {
+                        String uriPath = uri.getPath();
+                        if (uriPath != null && !uriPath.isEmpty()) {
+                            int lastSlash = uriPath.lastIndexOf('/');
+                            String sub = lastSlash >= 0 ? uriPath.substring(lastSlash + 1) : uriPath;
+                            if (!sub.isEmpty()) {
+                                name = sub;
+                            }
+                        }
+                    }
+                    if (name == null || name.isEmpty()) {
+                        name = "attachment";
+                    }
+                }
+            }
+        } else {
+            Path localPath = null;
+            try {
+                localPath = Path.of(pathOrUriOrBase64);
+            } catch (Exception e) {
+                // Ignore invalid path syntax
+            }
+
+            if (localPath != null && Files.exists(localPath)) {
+                bytes = Files.readAllBytes(localPath);
+                if (name == null || name.isEmpty()) {
+                    name = localPath.getFileName() != null ? localPath.getFileName().toString() : "attachment";
+                }
+            } else {
+                if (name != null && !name.isEmpty() && isBase64(pathOrUriOrBase64)) {
+                    base64Data = pathOrUriOrBase64;
+                } else if (localPath != null) {
+                    throw new NoSuchFileException(pathOrUriOrBase64);
+                } else {
+                    throw new IllegalArgumentException("Cannot resolve attachment file or URI: " + pathOrUriOrBase64);
+                }
+            }
+        }
+
+        if (base64Data == null && bytes != null) {
+            base64Data = Base64.getEncoder().encodeToString(bytes);
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("name", name);
+        payload.addProperty("data", base64Data);
+        if (overwrite != null) {
+            payload.addProperty("overwrite", overwrite);
+        }
+        return payload;
+    }
+
+    private static String extractFilenameFromContentDisposition(String header) {
+        if (header == null) return null;
+        for (String part : header.split(";")) {
+            part = part.trim();
+            if (part.toLowerCase().startsWith("filename*=")) {
+                String val = part.substring(10).trim();
+                int idx = val.indexOf("''");
+                if (idx >= 0) {
+                    val = val.substring(idx + 2);
+                }
+                if (val.startsWith("\"") && val.endsWith("\"") && val.length() > 1) {
+                    val = val.substring(1, val.length() - 1);
+                }
+                try {
+                    return URLDecoder.decode(val, StandardCharsets.UTF_8);
+                } catch (Exception e) {
+                    return val;
+                }
+            } else if (part.toLowerCase().startsWith("filename=")) {
+                String val = part.substring(9).trim();
+                if (val.startsWith("\"") && val.endsWith("\"") && val.length() > 1) {
+                    val = val.substring(1, val.length() - 1);
+                }
+                return val;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isBase64(String s) {
+        if (s == null || s.length() < 4) return false;
+        try {
+            Base64.getDecoder().decode(s);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Resolve binary data from a string which can be:
+     * - a local file path
+     * - a URI path (file:, http:, https:, etc.)
+     * - a base64 encoded string
+     *
+     * @param pathOrUriOrBase64 local file path, URI path, or base64 string
+     * @return byte[] binary content
+     * @throws Exception if reading fails or file/URI cannot be resolved
+     */
+    public static byte[] resolveBinaryData(String pathOrUriOrBase64) throws Exception {
+        if (pathOrUriOrBase64 == null || pathOrUriOrBase64.trim().isEmpty()) {
+            throw new IllegalArgumentException("'data' cannot be empty");
+        }
+        String input = pathOrUriOrBase64.trim();
+
+        URI uri = null;
+        int colonIdx = input.indexOf(':');
+        // Do not treat Windows drive letters (e.g. C:\) as URI schemes
+        if (colonIdx > 1) {
+            try {
+                URI candidate = URI.create(input);
+                if (candidate.isAbsolute()) {
+                    uri = candidate;
+                }
+            } catch (Exception e) {
+                // Not a valid URI
+            }
+        }
+
+        if (uri != null) {
+            if ("file".equalsIgnoreCase(uri.getScheme())) {
+                Path filePath = Path.of(uri);
+                return Files.readAllBytes(filePath);
+            } else {
+                URL url = uri.toURL();
+                URLConnection conn = url.openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(30000);
+                try (InputStream in = conn.getInputStream()) {
+                    return in.readAllBytes();
+                }
+            }
+        }
+
+        Path localPath = null;
+        try {
+            localPath = Path.of(input);
+        } catch (Exception e) {
+            // Ignore invalid path syntax
+        }
+
+        if (localPath != null && Files.exists(localPath)) {
+            return Files.readAllBytes(localPath);
+        }
+
+        if (isBase64(input)) {
+            try {
+                return Base64.getDecoder().decode(input);
+            } catch (Exception e) {
+                // Ignore and fall through
+            }
+        }
+
+        if (localPath != null) {
+            throw new NoSuchFileException(input);
+        }
+
+        throw new IllegalArgumentException("Cannot resolve data from file path or URI: " + input);
     }
 }

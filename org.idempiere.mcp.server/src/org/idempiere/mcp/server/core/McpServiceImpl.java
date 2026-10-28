@@ -271,8 +271,10 @@ public class McpServiceImpl implements IMcpService {
                                                 + "**Hint**: Use the 'idempiere_model_list_models' tools get the list of models (tables)."
                                                 + "**Hint** 'idempiere_window_get_records' and 'idempiere_window_get_child_tab_records' tool can also be used to search records within a window context." },
                                 new String[] { "record_id", "string", "record id" },
-                                new String[] { "data", "object",
-                                                "JSON Object required keys: 'name' (filename string) and 'data' (base64 encoded file content string)." }));
+                                new String[] { "data", "string",
+                                                "Local file path or URI path of the file to attach." },
+                                new String[] { "name", "string",
+                                                "Optional attachment file name. If omitted, derived from the file path or URI." }));
 
                 tools.add(createTool("idempiere_model_delete_record_attachment", "Delete attachment of a record",
                                 new String[] { "tableName", "record_id" },
@@ -344,6 +346,7 @@ public class McpServiceImpl implements IMcpService {
                                                                 + "3. use the 'idempiere_window_get_records' tool for process window" },
                                 new String[] { "parameters", "object", "Process parameters as a JSON object. "
                                                 + "**Example**: {\"C_Order_ID\": 1000010, \"IsGenerated\": \"Y\"}." },
+                                new String[] { "record_id", "integer", "Optional record id to run process for a specific record." },
                                 new String[] { "logMigrationScript", "boolean", "Optional. If true, log SQL migration script on server (requires System Administrator on System client)." },
                                 new String[] { "adempiereSys", "boolean", "Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client)." },
                                 new String[] { "migrationScriptComment", "string", "Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client)." }));
@@ -713,7 +716,7 @@ public class McpServiceImpl implements IMcpService {
                                 new String[] { "uploadId", "string", "Upload UUID." },
                                 new String[] { "chunkOrder", "integer", "Chunk sequence (starts from 1)." },
                                 new String[] { "totalChunks", "integer", "Total number of chunks." },
-                                new String[] { "data", "string", "Base64 encoded chunk content." }));
+                                new String[] { "data", "string", "Local file path or URI path of chunk data." }));
                 tools.add(createTool("idempiere_upload_get_status",
                                 "Retrieves the current status of an ongoing or completed upload.",
                                 new String[] { "uploadId" },

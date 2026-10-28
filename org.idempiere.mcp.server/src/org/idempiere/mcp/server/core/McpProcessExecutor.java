@@ -50,6 +50,9 @@ public class McpProcessExecutor {
             JsonObject params = args.has("parameters") ? args.get("parameters").getAsJsonObject() : new JsonObject();
 
             JsonObject payload = params.size() > 0 ? params : new JsonObject();
+            if (args.has("record_id")) {
+                payload.add("record-id", args.get("record_id"));
+            }
 
             JsonElement response = client.post("/processes/" + processId, payload, token, McpExecutorUtils.extractMigrationHeaders(args));
             return McpExecutorUtils.wrapJsonContent(id, response);

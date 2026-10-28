@@ -129,7 +129,7 @@ public class McpModelExecutor {
         return McpExecutorUtils.execute(id, "Add Record Attachment", () -> {
             String tableName = args.get("tableName").getAsString();
             String recordId = args.get("record_id").getAsString();
-            JsonObject data = args.get("data").getAsJsonObject();
+            JsonObject data = McpExecutorUtils.resolveAttachmentPayload(args);
             String path = "/models/" + URLEncoder.encode(tableName, StandardCharsets.UTF_8) + "/" + recordId
                     + "/attachments";
             JsonElement response = client.post(path, data, token);

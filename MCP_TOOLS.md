@@ -337,7 +337,8 @@ Add/update attachment by record id and file name
 |---|---|---|---|
 | `tableName` | `string` | **Yes** | table name.<br>• **Hint**: Check 'idempiere://metadata/models' first to find Table Names.<br>• **Hint**: Use the 'idempiere_model_list_models' tools get the list of models (tables).<br>• **Hint** 'idempiere_window_get_records' and 'idempiere_window_get_child_tab_records' tool can also be used to search records within a window context. |
 | `record_id` | `string` | **Yes** | record id |
-| `data` | `object` | **Yes** | JSON Object required keys: 'name' (filename string) and 'data' (base64 encoded file content string). |
+| `data` | `string` | **Yes** | Local file path or URI path of the file to attach. |
+| `name` | `string` | No | Optional attachment file name. If omitted, derived from the file path or URI. |
 | `_authorization_bearer` | `string` | No | Optional HTTP Authorization Bearer Token. |
 
 <a id="idempiere_model_delete_record_attachment"></a>
@@ -853,6 +854,7 @@ Run a process/report.
 |---|---|---|---|
 | `process_value` | `string` | **Yes** | value/search key property of the process (ad_process.value).<br>• **Search for Process**: 1. 'idempiere://metadata/processes' MCP resource for value property.2. use the 'idempiere_model_search_records' tool with ad_process as model.3. use the 'idempiere_window_get_records' tool for process window |
 | `parameters` | `object` | No | Process parameters as a JSON object. |
+| `record_id` | `integer` | No | Optional. Record ID to run process for a specific record. |
 | `logMigrationScript` | `boolean` | No | Optional. If true, log SQL migration script on server (requires System Administrator on System client). |
 | `adempiereSys` | `boolean` | No | Optional. If true, enable Dictionary Maintenance mode and use centralized IDs (requires System Administrator on System client). |
 | `migrationScriptComment` | `string` | No | Optional. Migration script comment, e.g. 'IDEMPIERE-1234 Short description' (requires System Administrator on System client). |
@@ -1188,7 +1190,7 @@ Upload a chunk for an upload session.
 | `uploadId` | `string` | **Yes** | Upload UUID. |
 | `chunkOrder` | `integer` | **Yes** | Chunk sequence (starts from 1). |
 | `totalChunks` | `integer` | **Yes** | Total number of chunks. |
-| `data` | `string` | **Yes** | Base64 encoded chunk content. |
+| `data` | `string` | **Yes** | Local file path or URI path of chunk data. |
 | `_authorization_bearer` | `string` | No | Optional HTTP Authorization Bearer Token. |
 
 <a id="idempiere_upload_get_status"></a>

@@ -28,7 +28,6 @@ package org.idempiere.mcp.server.core;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -282,8 +281,8 @@ public class McpMiscExecutor {
             String uploadId = args.get("uploadId").getAsString();
             int chunkOrder = args.get("chunkOrder").getAsInt();
             long totalChunks = args.get("totalChunks").getAsLong();
-            String base64Data = args.get("data").getAsString();
-            byte[] dataBytes = Base64.getDecoder().decode(base64Data);
+            String data = args.get("data").getAsString();
+            byte[] dataBytes = McpExecutorUtils.resolveBinaryData(data);
 
             // Calculate SHA-256
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
