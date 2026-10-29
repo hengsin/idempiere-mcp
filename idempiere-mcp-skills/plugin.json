@@ -2,11 +2,15 @@
   "name": "idempiere-mcp",
   "displayName": "iDempiere MCP Skills",
   "version": "1.0.0",
-  "description": "Skills for interacting with iDempiere ERP via Model Context Protocol (MCP), including tenant/system authentication, table column management, window tab field configuration, centralized ID setup, and 2Pack package import (pack in).",
+  "description": "Skills for interacting with iDempiere ERP via Model Context Protocol (MCP), including tenant/system authentication, table creation and column management, table index creation and validation, Java model generation, window tab field configuration, centralized ID setup, and 2Pack package import (pack in).",
   "suggestedPrompts": [
     "Authenticate to iDempiere System tenant",
+    "Create a new table in iDempiere",
     "Add a new column to an iDempiere table",
+    "Add an index to an iDempiere table",
+    "Generate Java model class for an iDempiere table",
     "Add a new field to an iDempiere window tab",
     "Pack in a 2Pack archive"
   ]
 }
+

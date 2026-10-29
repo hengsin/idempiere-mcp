@@ -142,55 +142,17 @@ Run the **Synchronize Column** process to create or alter the physical column:
 Ask the user whether to add an index for the new column.
 
 If yes, collect:
-
-- Index name
+- Index name (≤ 63 chars)
 - Columns or SQL expression that comes before
 - Columns or SQL expression that comes after
 - Whether the index is unique
 
-Add the index with `idempiere_window_create_child_tab_record` on the `Table Index` child tab:
+Execute the `idempiere-add-table-index` skill with `AD_Table_ID`, the index name, the resolved column list, and uniqueness choice. Pass `adempiereSys`, `logMigrationScript`, and `migrationScriptComment` if requested.
 
-```json
-{
-  "window_name": "table-and-column",
-  "tab_name": "table",
-  "record_id": "<AD_Table_ID>",
-  "child_tab_name": "table-index",
-  "data": {
-    "Name": "<IndexName>",
-    "IsUnique": false,
-    "index-column": [
-      { "AD_Column_ID": <Before_AD_Column_ID> }
-      { "AD_Column_ID": <AD_Column_ID> },
-      { "AD_Column_ID": <After_AD_Column_ID> }
-    ]
-  },
-  "_authorization_bearer": "<IDEMPIERE_BEARER_TOKEN>"
-}
-```
+### 7. Optional Model Generation
 
-- The `index-column` array creates the `Index Column` (`AD_IndexColumn`) child records.
-- Include the newly added column and every other column selected for the index.
-- Set `IsUnique` according to the user's choice.
-- Confirm the values with the user before saving.
-
-Then run the **Index Validate** process to create or verify the physical index:
-
-- Use `idempiere_process_run` with `ad_tableindex-validate` as process_value and the `AD_TableIndex_ID` value as `record-id` parameter.
-- Report any error returned by the process.
-
-### Re-Generate model class
 Ask user whether to re-generate model class for table.
-If yes:
-- use `idempiere_model_get_record` tool, `AD_Table_ID` value as id and `AD_Table` as model to get the `TableName` and `EntityType` property.
-- Use `idempiere_process_run` with `generatemodel` as process_value and parameters:
-  - TableLike=<TableName>
-  - TableEntityType=<EntityType>
-  - Folder=Prompt for user entry
-  - PackageName=Prompt for user entry, default is `org.compiere.model`
-  - IsGenerateInterface=Y
-  - IsGenerateClass=Y
-- Report any error returned by the process.
+If yes, execute the `idempiere-generate-model` skill for `<TableName>` (passing `AD_Table_ID` and `TableName`).
 
 ## Notes
 
